@@ -4,16 +4,16 @@ export default defineConfig([
   {
     entry: { index: 'src/index.ts' },
     format: ['esm', 'cjs'],
-    // Декларации эмитятся отдельно через vue-tsc (build:types) — он умеет
-    // корректно анализировать типы .vue SFC через defineProps/defineEmits,
-    // чего чистый esbuild/tsup сделать не может.
+    // Declarations are emitted separately via vue-tsc (build:types) — it can
+    // correctly analyze .vue SFC types through defineProps/defineEmits,
+    // which plain esbuild/tsup can't do.
     dts: false,
-    // false, потому что .d.ts из шага build:types кладутся в ту же dist/ —
-    // не хотим, чтобы этот шаг их стирал вне зависимости от порядка запуска.
+    // false because the .d.ts files from the build:types step land in the
+    // same dist/ — we don't want this step wiping them regardless of run order.
     clean: false,
-    // BottomSheet.vue не бандлится: esbuild не умеет парсить .vue-синтаксис,
-    // да это и не нужно — компонент поставляется исходником и компилируется
-    // уже тем инструментом (Vite/webpack), который есть у потребителя пакета.
+    // BottomSheet.vue isn't bundled: esbuild can't parse .vue syntax, and
+    // it doesn't need to — the component ships as source and gets compiled
+    // by whichever tool (Vite/webpack) the package consumer already has.
     external: [/\.vue$/],
     target: 'es2022',
     sourcemap: true,
@@ -22,11 +22,11 @@ export default defineConfig([
     },
   },
   {
-    // Nuxt-модуль собираем только в ESM: Nuxt 3 сам по себе ESM-first и
-    // грузит модули через import, а resolver внутри опирается на
-    // import.meta.url, который в CJS-сборке всегда пуст. CJS-вариант тут
-    // был бы формально рабочим файлом, но заведомо сломанным при вызове —
-    // лучше его не поставлять вовсе, чем поставлять неработающим.
+    // The Nuxt module is built as ESM only: Nuxt 3 is itself ESM-first and
+    // loads modules via import, and the resolver inside relies on
+    // import.meta.url, which is always empty in a CJS build. A CJS variant
+    // here would technically be a valid file but guaranteed broken when
+    // called — better not to ship it at all than to ship it non-working.
     entry: { nuxt: 'src/nuxt.ts' },
     format: ['esm'],
     dts: false,

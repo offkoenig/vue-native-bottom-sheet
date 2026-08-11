@@ -1,22 +1,22 @@
 import { defineNuxtModule, addComponent, createResolver } from '@nuxt/kit'
 
 export interface ModuleOptions {
-  /** Имя, под которым компонент доступен глобально (авто-импорт). @default 'BottomSheet' */
+  /** The name the component is globally available under (auto-import). @default 'BottomSheet' */
   componentName?: string
 }
 
 /**
- * Nuxt 3 модуль для vue-native-bottom-sheet.
+ * Nuxt 3 module for vue-native-bottom-sheet.
  *
- * Ничего, кроме регистрации компонента, не делает: стили лежат внутри
- * самого BottomSheet.vue (<style scoped>) и подхватываются штатной сборкой
- * Nuxt/Vite точно так же, как для любого другого .vue-компонента — никакого
- * отдельного CSS-файла подключать не нужно.
+ * Does nothing beyond registering the component: styles live inside
+ * BottomSheet.vue itself (<style scoped>) and get picked up by Nuxt/Vite's
+ * standard build exactly like any other .vue component — no separate CSS
+ * file needs to be imported.
  *
  * @example nuxt.config.ts
  * export default defineNuxtConfig({
  *   modules: ['vue-native-bottom-sheet/nuxt'],
- *   // необязательно:
+ *   // optional:
  *   nativeBottomSheet: { componentName: 'BottomSheet' },
  * })
  */

@@ -6,8 +6,8 @@ import { dirname, resolve } from 'node:path'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
-// Инлайнит весь JS/CSS прямо в index.html — получается один
-// самодостаточный файл, который можно открыть двойным кликом, без сервера.
+// Inlines all JS/CSS straight into index.html — the result is a single
+// self-contained file that can be opened with a double-click, no server needed.
 export default defineConfig({
   root: __dirname,
   plugins: [vue(), viteSingleFile()],

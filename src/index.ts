@@ -12,10 +12,10 @@ export type {
 } from './types'
 
 /**
- * Опциональный Vue-плагин — регистрирует <BottomSheet> глобально, чтобы не
- * импортировать компонент в каждом файле. Использование не обязательно:
- * можно просто `import { BottomSheet } from 'vue-native-bottom-sheet'`
- * и использовать локально в конкретном компоненте.
+ * Optional Vue plugin — registers <BottomSheet> globally, so it doesn't
+ * need importing into every file. Usage is optional: you can just
+ * `import { BottomSheet } from 'vue-native-bottom-sheet'` and use it
+ * locally in a specific component.
  *
  * @example
  * import { createApp } from 'vue'
@@ -24,7 +24,7 @@ export type {
  * createApp(App).use(BottomSheetPlugin).mount('#app')
  */
 export interface BottomSheetPluginOptions {
-  /** Имя, под которым регистрируется компонент. @default 'BottomSheet' */
+  /** The name the component is registered under. @default 'BottomSheet' */
   componentName?: string
 }
 

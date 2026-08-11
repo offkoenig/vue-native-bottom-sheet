@@ -1,80 +1,79 @@
 /**
- * Публичные типы пакета. Вынесены в отдельный файл (а не объявлены инлайново
- * внутри BottomSheet.vue), чтобы:
- *  1. Их можно было импортировать в сам компонент через `defineProps<BottomSheetProps>()`.
- *  2. Их можно было переэкспортировать из index.ts для потребителей пакета,
- *     которым нужно, например, типизировать свой собственный проп как
- *     `BottomSheetProps['snapPoints']`.
+ * Public package types. Pulled into a separate file (rather than declared
+ * inline inside BottomSheet.vue) so that:
+ *  1. They can be imported into the component itself via `defineProps<BottomSheetProps>()`.
+ *  2. They can be re-exported from index.ts for package consumers who need,
+ *     say, to type their own prop as `BottomSheetProps['snapPoints']`.
  */
 
-/** То же, что принимает Vue в `:class` — строка, объект или массив (рекурсивно). */
+/** Same as what Vue accepts in `:class` — a string, object, or array (recursively). */
 export type ClassValue = string | Record<string, boolean> | ClassValue[]
 
 export interface BottomSheetProps {
   /**
-   * Точки прилипания. Каждая — либо число (проценты высоты вьюпорта, 0–100),
-   * либо строка `'content'` — реальная высота слотов header+default+footer,
-   * измеренная через ResizeObserver и заклемпленная в 100dvh. При изменении
-   * контента, пока шторка открыта на этой точке, она сама доезжает до новой
-   * высоты. Порядок не важен — сортируются автоматически (в т.ч. заново при
-   * каждом изменении измеренной высоты 'content').
+   * Snap points. Each is either a number (% of viewport height, 0–100) or
+   * the string `'content'` — the actual height of the header+default+footer
+   * slots, measured via ResizeObserver and capped at 100dvh. If the content
+   * changes while the sheet is open on this point, it re-springs to the
+   * new height live. Order doesn't matter — sorted automatically (and
+   * re-sorted whenever the measured 'content' height changes).
    */
   snapPoints?: (number | 'content')[]
-  /** Индекс точки из snapPoints, до которой шторка открывается по умолчанию. */
+  /** Index into snapPoints the sheet opens to by default. */
   defaultSnapPoint?: number
-  /** Порог скорости свайпа (px/мс), после которого срабатывает «инерционный» переход/закрытие. */
+  /** Swipe velocity threshold (px/ms) above which an inertial transition/close kicks in. */
   closeThreshold?: number
-  /** Коэффициент сопротивления (0..1) эффекта «резинки» при перетягивании выше верхней точки. 0.55 — константа из WebKit/UIScrollView. */
+  /** Resistance (0..1) of the rubber-band effect above the top snap point. 0.55 is WebKit/UIScrollView's own constant. */
   rubberBandResistance?: number
-  /** Жёсткость пружины settle-анимации. Больше — быстрее и «туже». */
+  /** Spring stiffness of the settle animation. Higher — faster and "tighter". */
   springStiffness?: number
-  /** Демпфирование пружины. Больше — меньше «отскок» в конце анимации. */
+  /** Spring damping. Higher — less "overshoot" at the end of the animation. */
   springDamping?: number
-  /** Масса тела пружины (обычно можно не трогать). */
+  /** Spring body mass (usually fine to leave alone). */
   springMass?: number
-  /** Уважать ли системную настройку prefers-reduced-motion (мгновенные переходы вместо пружины). По умолчанию true — как и должно быть для реального продакшн-приложения. Отключайте только осознанно (например, в демо/шоукейсе, где сама анимация — предмет показа). */
+  /** Whether to honor the system's prefers-reduced-motion setting (instant transitions instead of a spring). Defaults to true — as it should for a real production app. Turn off only deliberately (e.g. in a demo/showcase whose whole point is to show the animation). */
   respectReducedMotion?: boolean
-  /** Показывать затемнённый backdrop. */
+  /** Show the dimmed backdrop. */
   showBackdrop?: boolean
-  /** Максимальная непрозрачность backdrop (0..1) в полностью открытом состоянии. */
+  /** Maximum backdrop opacity (0..1) at full openness. */
   backdropOpacity?: number
-  /** Закрывать по клику на backdrop. */
+  /** Close on backdrop click. */
   closeOnBackdropClick?: boolean
-  /** Закрывать по Escape. */
+  /** Close on Escape. */
   closeOnEscape?: boolean
-  /** Если false — шторку нельзя закрыть свайпом/backdrop/Escape, только программно (v-model, slot-проп close или ref). */
+  /** If false, the sheet can't be closed via swipe/backdrop/Escape — only programmatically (v-model, the slot's close prop, or a ref). */
   dismissible?: boolean
-  /** Блокировать скролл body, пока шторка открыта (с учётом особенностей iOS Safari). */
+  /** Lock body scroll while the sheet is open (accounting for iOS Safari quirks). */
   lockBodyScroll?: boolean
-  /** aria-label диалога. */
+  /** aria-label for the dialog. */
   ariaLabel?: string
-  /** Базовый z-index (backdrop = zIndex, сама панель = zIndex + 1). */
+  /** Base z-index (backdrop = zIndex, the panel itself = zIndex + 1). */
   zIndex?: number
-  /** Доп. классы на корневой элемент панели — способ добавить свои (в т.ч. Tailwind/UnoCSS) классы поверх встроенных стилей. */
+  /** Extra classes on the panel's root element — a way to layer your own (including Tailwind/UnoCSS) classes on top of the built-in styles. */
   panelClass?: ClassValue
-  /** Доп. классы на скроллируемую область контента. */
+  /** Extra classes on the scrollable content area. */
   contentClass?: ClassValue
-  /** Доп. классы на backdrop. */
+  /** Extra classes on the backdrop. */
   backdropClass?: ClassValue
 }
 
 export interface BottomSheetEmits {
-  /** Анимация открытия завершена. */
+  /** The open animation has finished. */
   opened: []
-  /** Анимация закрытия завершена (панель удалена из DOM). */
+  /** The close animation has finished (the panel is removed from the DOM). */
   closed: []
-  /** Панель «прилипла» к одной из snapPoints (не к закрытому состоянию). */
+  /** The panel settled on one of the snapPoints (not on closed). */
   snap: [index: number, percent: number]
-  /** Начался жест перетаскивания. */
+  /** A drag gesture started. */
   'drag-start': []
-  /** Жест перетаскивания завершён; velocity в px/мс (+ вниз, − вверх). */
+  /** The drag gesture ended; velocity in px/ms (+ down, − up). */
   'drag-end': [velocity: number]
 }
 
-/** Что доступно через template ref (defineExpose). */
+/** What's available via a template ref (defineExpose). */
 export interface BottomSheetExposed {
-  /** Закрыть программно (эквивалент v-model = false, но без аргументов — безопасно для @click). */
+  /** Close programmatically (equivalent to v-model = false, but with no arguments — safe for @click). */
   close: () => void
-  /** Мгновенно «прилипнуть» к snap-точке по индексу, не закрывая и не открывая заново. */
+  /** Instantly snap to a snap point by index, without closing or reopening. */
   snapToIndex: (index: number) => void
 }

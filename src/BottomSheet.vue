@@ -2,30 +2,31 @@
 /**
  * BottomSheet.vue
  * ──────────────────────────────────────────────────────────────────────────
- * Нативно ощущающаяся выезжающая снизу панель (bottom sheet) для Vue 3.
- * Работает в любом Vue 3 (≥3.4) проекте — Vite, webpack/vue-loader, Nuxt 3
- * (см. соседний nuxt.ts для авто-регистрации). Не требует Tailwind — все
- * стили самодостаточны (scoped CSS + CSS-переменные для темизации), не
- * зависит от `import.meta.client` (Nuxt-специфичного макроса) — вместо
- * этого используется универсальная проверка `typeof window !== 'undefined'`.
+ * A bottom sheet for Vue 3 built to feel native. Works in any Vue 3 (≥3.4)
+ * project — Vite, webpack/vue-loader, Nuxt 3 (see the neighboring nuxt.ts
+ * for auto-registration). Doesn't require Tailwind — all styling is
+ * self-contained (scoped CSS + CSS custom properties for theming), and it
+ * doesn't depend on `import.meta.client` (a Nuxt-specific macro) — instead
+ * it uses the universal `typeof window !== 'undefined'` check.
  *
- * Ключевые принципы реализации (подробности и математика — в README.md):
- *  1. Во время жеста меняется ТОЛЬКО `transform: translate3d(...)`.
- *     top/bottom/height никогда не трогаются в реальном времени → нет reflow,
- *     только compositing → стабильные 60 FPS.
- *  2. Открытие/закрытие/снап анимируются пружиной (закон Гука + демпфирование),
- *     а не CSS-transition с фиксированной длительностью. Скорость свайпа
- *     (velocity) становится начальной скоростью пружины — анимация «доезжает»
- *     физически достоверно, а не по одной и той же кривой.
- *  3. Rubber-band при перетягивании выше самой открытой точки использует ту же
- *     формулу, что и сам WebKit/UIScrollView для оверскролла (константа 0.55).
+ * Core implementation principles (full details and math are in README.md):
+ *  1. During a gesture, ONLY `transform: translate3d(...)` changes.
+ *     top/bottom/height are never touched in real time → no reflow,
+ *     only compositing → a genuinely stable 60 FPS.
+ *  2. Open/close/snap are animated with a spring (Hooke's law + damping),
+ *     not a fixed-duration CSS transition. Swipe velocity becomes the
+ *     spring's initial velocity — the animation settles physically
+ *     accurately rather than following one and the same easing curve.
+ *  3. Rubber-band resistance when dragging past the fully-open point uses
+ *     the same formula WebKit/UIScrollView itself uses for overscroll
+ *     (constant 0.55).
  */
 import { ref, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import type { BottomSheetProps, BottomSheetEmits, BottomSheetExposed } from './types'
 
-/* Универсальная, framework-agnostic проверка клиента. Безопасна на SSR:
-   `typeof window` никогда не бросает ReferenceError, даже если window не
-   объявлен (в отличие от прямого обращения к window). */
+/* A universal, framework-agnostic client check. SSR-safe: `typeof window`
+   never throws a ReferenceError, even when window isn't declared at all
+   (unlike accessing window directly). */
 const isClient = typeof window !== 'undefined'
 
 /* ════════════════════════════════════════════════════════════════════ *
@@ -59,14 +60,14 @@ const emit = defineEmits<BottomSheetEmits>()
 const isOpen = defineModel<boolean>({ default: false })
 
 /* ════════════════════════════════════════════════════════════════════ *
- *  SSR / монтирование
+ *  SSR / mounting
  * ════════════════════════════════════════════════════════════════════ */
 
-const isMounted = ref(false) // true только на клиенте после onMounted — защита от гидратации
-const isInDom = ref(false) // ленивый маунт: контент рендерится только после первого открытия
+const isMounted = ref(false) // true only on the client after onMounted — guards against hydration mismatches
+const isInDom = ref(false) // lazy mount: content only renders after the first open
 
 /* ════════════════════════════════════════════════════════════════════ *
- *  Рефы на DOM
+ *  DOM refs
  * ════════════════════════════════════════════════════════════════════ */
 
 const sheetRef = ref<HTMLElement | null>(null)
@@ -76,17 +77,17 @@ const contentInnerRef = ref<HTMLElement | null>(null)
 const footerRef = ref<HTMLElement | null>(null)
 
 /* ════════════════════════════════════════════════════════════════════ *
- *  Геометрия: перевод snap-точек (%) в пиксели translateY
+ *  Geometry: converting snap points (%) to translateY pixels
  * ════════════════════════════════════════════════════════════════════ */
 
 const viewportHeight = ref(0)
 
 const usesContentFit = computed(() => (props.snapPoints ?? []).some((p) => p === 'content'))
 
-/** Измеренная «естественная» высота header+content+footer для snap-точки 'content'. */
+/** Measured "natural" height of header+content+footer, for the 'content' snap point. */
 const fitContentHeight = ref(0)
 
-/** 0 = самая открытая позиция (100% вьюпорта), viewportHeight = позиция «закрыто». */
+/** 0 = fully open (100% of viewport), viewportHeight = "closed" position. */
 function percentToTranslate(percent: number): number {
   const clamped = Math.min(Math.max(percent, 0), 100)
   return viewportHeight.value * (1 - clamped / 100)
@@ -94,18 +95,18 @@ function percentToTranslate(percent: number): number {
 
 interface ResolvedSnapPoint {
   raw: number | 'content'
-  /** translateY в px. */
+  /** translateY in px. */
   translate: number
-  /** Эквивалент в % вьюпорта — используется для сортировки и payload события `snap`. */
+  /** Equivalent in % of viewport — used for sorting and the `snap` event payload. */
   percent: number
 }
 
 /**
- * 'content' резолвится в translate независимо от percentToTranslate: высота
- * контента — величина в px, гонять её через проценты туда-обратно не нужно
- * и вносит только погрешность округления. Сортировка по percent means
- * порядок точек пересчитывается сам, если измеренная высота 'content'
- * когда-нибудь обгонит/отстанет от соседней фиксированной точки.
+ * 'content' resolves to a translate independently of percentToTranslate:
+ * content height is already a px quantity, so round-tripping it through
+ * percent would only add rounding error. Sorting by percent means the
+ * point order re-resolves itself if the measured 'content' height ever
+ * overtakes or falls behind a neighboring fixed point.
  */
 const resolvedSnapPoints = computed<ResolvedSnapPoint[]>(() => {
   const points = props.snapPoints?.length ? props.snapPoints : [100]
@@ -127,9 +128,9 @@ const clampedDefaultIndex = computed(() =>
 )
 
 const snapTranslates = computed(() => resolvedSnapPoints.value.map((r) => r.translate))
-/** translateY самой открытой точки — верхняя граница, выше которой начинается rubber-band. */
+/** translateY of the fully-open point — the upper bound past which rubber-band kicks in. */
 const minTranslate = computed(() => snapTranslates.value[snapTranslates.value.length - 1] ?? 0)
-/** translateY полностью закрытого состояния — вся панель под нижним краем экрана. */
+/** translateY of the fully-closed state — the whole panel below the bottom edge of the screen. */
 const closedTranslate = computed(() => viewportHeight.value)
 
 const currentSnapIndex = ref(0)
@@ -143,7 +144,7 @@ function updateViewportHeight() {
 }
 
 /* ════════════════════════════════════════════════════════════════════ *
- *  Rubber band — формула WebKit/UIScrollView: f(x,d,c) = x·d·c / (d + c·x)
+ *  Rubber band — WebKit/UIScrollView's formula: f(x,d,c) = x·d·c / (d + c·x)
  * ════════════════════════════════════════════════════════════════════ */
 
 function rubberBand(overshoot: number, dimension: number, constant: number): number {
@@ -152,12 +153,12 @@ function rubberBand(overshoot: number, dimension: number, constant: number): num
 }
 
 /* ════════════════════════════════════════════════════════════════════ *
- *  Пружинная анимация (semi-implicit Euler)
+ *  Spring animation (semi-implicit Euler)
  * ════════════════════════════════════════════════════════════════════ */
 
 let rafId: number | null = null
 let reducedMotionQuery: MediaQueryList | null = null
-/** Последняя цель пружины — чтобы content-resize-обработчик не перезапускал анимацию на тот же таргет. */
+/** Last spring target — so the content-resize handler doesn't restart the animation toward the same target. */
 let lastSpringTarget: number | null = null
 
 function cancelSpringAnimation() {
@@ -168,8 +169,9 @@ function cancelSpringAnimation() {
 }
 
 /**
- * Анимирует translateY.value к target, стартуя с текущей позиции и заданной
- * начальной скорости (обычно — измеренная скорость свайпа в px/мс).
+ * Animates translateY.value toward target, starting from the current
+ * position and a given initial velocity (usually the measured swipe
+ * velocity, in px/ms).
  */
 function springAnimateTo(target: number, initialVelocity: number, onDone?: () => void) {
   cancelSpringAnimation()
@@ -184,14 +186,14 @@ function springAnimateTo(target: number, initialVelocity: number, onDone?: () =>
   isAnimating.value = true
 
   let position = translateY.value
-  // px/мс → px/с, с защитой от аномальных выбросов velocity
+  // px/ms → px/s, clamped against anomalous velocity spikes
   let velocity = Math.max(Math.min(initialVelocity, 6), -6) * 1000
 
   const { springStiffness: k, springDamping: c, springMass: m } = props
   let lastTime = performance.now()
 
   const step = (now: number) => {
-    const dt = Math.min((now - lastTime) / 1000, 1 / 30) // защита от скачков (напр. смена вкладки)
+    const dt = Math.min((now - lastTime) / 1000, 1 / 30) // guards against spikes (e.g. switching tabs)
     lastTime = now
 
     const displacement = position - target
@@ -216,7 +218,7 @@ function springAnimateTo(target: number, initialVelocity: number, onDone?: () =>
 }
 
 /* ════════════════════════════════════════════════════════════════════ *
- *  Блокировка скролла body (с учётом iOS Safari)
+ *  Body scroll lock (accounting for iOS Safari)
  * ════════════════════════════════════════════════════════════════════ */
 
 let savedScrollY = 0
@@ -258,18 +260,19 @@ function unlockScroll() {
 }
 
 /* ════════════════════════════════════════════════════════════════════ *
- *  Авто-подгонка под высоту контента (snap-точка 'content')
+ *  Auto-fitting to content height (the 'content' snap point)
  * ════════════════════════════════════════════════════════════════════ */
 
 let contentResizeObserver: ResizeObserver | null = null
 
 /**
- * grabberZoneRef и footerRef не участвуют в flex-растяжении (flex-shrink: 0),
- * поэтому их offsetHeight уже равен естественной высоте. А вот .vbs-content
- * растягивается на всё доступное место (flex: 1 1 auto) — измерять его
- * напрямую бессмысленно, отсюда contentInnerRef: обычный блочный div внутри
- * скролл-контейнера, не участвующий в растяжении, чей offsetHeight и есть
- * реальная высота слота, независимо от того, сколько места дал ему flex.
+ * grabberZoneRef and footerRef don't participate in flex stretching
+ * (flex-shrink: 0), so their offsetHeight already equals their natural
+ * height. .vbs-content, though, stretches to fill all available space
+ * (flex: 1 1 auto) — measuring it directly is meaningless, hence
+ * contentInnerRef: a plain block div inside the scroll container that
+ * doesn't participate in stretching, whose offsetHeight is the slot's
+ * real height regardless of how much space flex gave it.
  */
 function measureFitContentHeight() {
   const grabberH = grabberZoneRef.value?.offsetHeight ?? 0
@@ -279,12 +282,13 @@ function measureFitContentHeight() {
 }
 
 /**
- * Живая реакция на изменение высоты контента, пока шторка уже открыта
- * (раскрылся аккордеон, догрузилась картинка и т.п.): если сейчас активна
- * snap-точка 'content', пружина доезжает до новой высоты. Не встревает в
- * активный драг пользователя и не дублирует анимацию, если высота не
- * поменялась (initial-колбэк ResizeObserver срабатывает сразу после
- * observe(), уже после того, как открывающая анимация её учла).
+ * Live reaction to content height changes while the sheet is already open
+ * (an accordion expands, an image loads, etc.): if the 'content' snap
+ * point is currently active, the spring settles toward the new height.
+ * Doesn't interfere with an active user drag, and doesn't duplicate the
+ * animation if the height hasn't actually changed (ResizeObserver's
+ * initial callback fires right after observe(), by which point the
+ * opening animation has already accounted for it).
  */
 function onContentResize() {
   measureFitContentHeight()
@@ -313,27 +317,28 @@ function teardownContentResizeObserver() {
 }
 
 /* ════════════════════════════════════════════════════════════════════ *
- *  Открытие / закрытие
+ *  Open / close
  * ════════════════════════════════════════════════════════════════════ */
 
 let previouslyFocused: HTMLElement | null = null
-let lastVelocity = 0 // px/мс; нужна, чтобы closing-анимация продолжала скорость флика
+let lastVelocity = 0 // px/ms; needed so the closing animation carries over the flick's velocity
 
 function openSheet() {
-  // Если панель уже была в DOM (например, пользователь передумал закрывать
-  // и снова открыл её прямо во время closing-анимации) — не дёргаем
-  // translateY к «закрыто», а просто разворачиваем пружину из текущей
-  // позиции. Иначе был бы заметный «прыжок» вниз перед открытием.
+  // If the panel was already in the DOM (e.g. the user changed their mind
+  // about closing and reopened it right during the closing animation) —
+  // don't yank translateY to "closed", just re-target the spring from its
+  // current position. Otherwise there'd be a visible downward "jump"
+  // before opening.
   const wasAlreadyInDom = isInDom.value
 
-  // Важно: translateY переводится в закрытую позицию ДО isInDom = true —
-  // то есть ДО того, как Vue вообще создаст DOM-узел панели. Если сделать
-  // это позже (внутри nextTick, как было раньше), самый первый рендер
-  // панели произойдёт со старым translateY (0 — «открыто»), и только следующим
-  // шагом «прыгнет» в закрытую позицию: лишний реактивный проход и риск,
-  // что браузер схлопнёт оба обновления в один пейнт, а анимация открытия
-  // окажется не видна вовсе — именно так выглядит баг «шторка просто
-  // появляется без анимации».
+  // Important: translateY is set to the closed position BEFORE isInDom =
+  // true — i.e. BEFORE Vue even creates the panel's DOM node. Doing this
+  // later (inside nextTick, as it used to be) would render the panel's
+  // very first frame with the old translateY (0 — "open"), only jumping to
+  // the closed position on the next step: an extra reactive pass, and a
+  // risk that the browser collapses both updates into a single paint,
+  // making the opening animation invisible entirely — that's exactly what
+  // the "the sheet just appears with no animation" bug looks like.
   if (!wasAlreadyInDom) {
     updateViewportHeight()
     translateY.value = closedTranslate.value
@@ -343,9 +348,9 @@ function openSheet() {
   lockScroll()
   nextTick(() => {
     currentSnapIndex.value = clampedDefaultIndex.value
-    // Измеряем ДО чтения snapTranslates ниже — иначе 'content' в самый первый
-    // раз откроется на fitContentHeight.value по умолчанию (0), т.е. в закрытую
-    // позицию.
+    // Measure BEFORE reading snapTranslates below — otherwise, the very
+    // first time, 'content' would resolve against fitContentHeight.value's
+    // default (0), i.e. the closed position.
     if (usesContentFit.value) {
       measureFitContentHeight()
       setupContentResizeObserver()
@@ -359,17 +364,17 @@ function openSheet() {
   })
 }
 
-/** Внутренняя версия: используется при закрытии из жеста, чтобы передать velocity флика в анимацию. */
+/** Internal version: used when closing from a gesture, to pass the flick's velocity into the animation. */
 function closeWithVelocity(velocity: number) {
   lastVelocity = velocity
   isOpen.value = false
 }
 
 /**
- * Публичная функция закрытия — без аргументов.
- * Специально не принимает payload, чтобы `<button @click="close">` в слотах
- * был безопасен: DOM передал бы туда PointerEvent, а не число, и это
- * заполнило бы velocity пружины мусором (NaN).
+ * Public close function — takes no arguments.
+ * Deliberately doesn't accept a payload, so `<button @click="close">` in
+ * slots is safe: the DOM would pass a PointerEvent there, not a number,
+ * and that would fill the spring's velocity with garbage (NaN).
  */
 function close() {
   closeWithVelocity(0)
@@ -397,7 +402,7 @@ watch(isOpen, (open) => {
 })
 
 /* ════════════════════════════════════════════════════════════════════ *
- *  Программное управление снаружи (template ref + defineExpose)
+ *  External programmatic control (template ref + defineExpose)
  * ════════════════════════════════════════════════════════════════════ */
 
 function snapToIndex(index: number) {
@@ -413,7 +418,7 @@ function snapToIndex(index: number) {
 defineExpose<BottomSheetExposed>({ close, snapToIndex })
 
 /* ════════════════════════════════════════════════════════════════════ *
- *  Жест: pointer-события, velocity, rubber band, scroll-handoff
+ *  Gesture: pointer events, velocity, rubber band, scroll handoff
  * ════════════════════════════════════════════════════════════════════ */
 
 interface Sample {
@@ -444,7 +449,7 @@ function pushSample(y: number) {
   while (samples.length > 2 && samples[0].t < cutoff) samples.shift()
 }
 
-/** px/мс; положительное значение — движение вниз. */
+/** px/ms; a positive value means downward movement. */
 function getVelocity(): number {
   if (samples.length < 2) return 0
   const first = samples[0]
@@ -490,15 +495,15 @@ function beginDragging(e: PointerEvent) {
   attachWindowListeners()
 }
 
-/** Маленькая «хваталка»-индикатор — тащит сразу, без порога движения. */
+/** The small grabber-bar indicator — starts dragging immediately, no movement threshold. */
 function onGrabberPointerDown(e: PointerEvent) {
   beginDragging(e)
 }
-/** Область слота header — с порогом движения, чтобы не мешать кликам по кнопкам внутри. */
+/** The header slot's area — has a movement threshold, so it doesn't interfere with clicks on buttons inside it. */
 function onHeaderPointerDown(e: PointerEvent) {
   beginPending(e, () => true)
 }
-/** Область скроллируемого контента — тащим шторку, только если контент докручен до самого верха. */
+/** The scrollable content area — only drags the sheet if the content is already scrolled all the way to the top. */
 function onContentPointerDown(e: PointerEvent) {
   beginPending(e, () => (contentRef.value?.scrollTop ?? 0) <= 0)
 }
@@ -580,14 +585,14 @@ function settle(velocity: number) {
   let closing = false
 
   if (velocity > props.closeThreshold) {
-    // быстрый флик вниз — переходим на снап ниже; если уже на самом нижнем — закрываемся
+    // fast downward flick — move to the snap point below; if already at the lowest one, close
     if (currentSnapIndex.value <= 0) closing = true
     else targetIndex = currentSnapIndex.value - 1
   } else if (velocity < -props.closeThreshold) {
-    // быстрый флик вверх — переходим на снап выше
+    // fast upward flick — move to the snap point above
     targetIndex = Math.min(currentSnapIndex.value + 1, snaps.length - 1)
   } else {
-    // медленный релиз — прилипаем к ближайшей точке (включая «закрыто»)
+    // slow release — stick to whichever point is nearest (including "closed")
     const candidates = [...snaps, closedTranslate.value]
     const nearest = findNearestIndex(translateY.value, candidates)
     closing = nearest === candidates.length - 1
@@ -611,7 +616,7 @@ function settle(velocity: number) {
 }
 
 /* ════════════════════════════════════════════════════════════════════ *
- *  Клавиатура: Escape закрывает, Tab — focus trap внутри панели
+ *  Keyboard: Escape closes, Tab is a focus trap inside the panel
  * ════════════════════════════════════════════════════════════════════ */
 
 function onDocumentKeydown(e: KeyboardEvent) {
@@ -646,13 +651,13 @@ function onSheetKeydown(e: KeyboardEvent) {
 }
 
 /* ════════════════════════════════════════════════════════════════════ *
- *  Ресайз / жизненный цикл
+ *  Resize / lifecycle
  * ════════════════════════════════════════════════════════════════════ */
 
 function onViewportResize() {
   updateViewportHeight()
-  // Смена ширины (напр. поворот экрана) может изменить перенос строк в
-  // контенте и его естественную высоту — пересчитываем перед чтением snapTranslates.
+  // A width change (e.g. rotating the screen) can reflow the content's
+  // line breaks and its natural height — recompute before reading snapTranslates.
   if (usesContentFit.value) measureFitContentHeight()
   if (isInDom.value && !isDragging.value && !isAnimating.value) {
     translateY.value = snapTranslates.value[currentSnapIndex.value] ?? closedTranslate.value
@@ -680,28 +685,30 @@ const sheetStyle = computed(() => ({
 }))
 
 /**
- * Футер лежит в том же flex-потоке, что и раньше (это сохраняет расчёт
- * доступного места для .vbs-content без изменений), но у панели фиксированная
- * высота 100dvh, а translateY уводит её вниз — при любой snap-точке ниже 100%
- * футер, как последний flex-элемент, физически оказывается за пределами
- * видимой области экрана (см. README/PR: «Got it, close» был недостижим).
+ * The footer sits in the same flex flow as before (this keeps
+ * .vbs-content's available-space math unchanged), but the panel has a
+ * fixed 100dvh height and translateY shifts it down — at any snap point
+ * below 100% the footer, as the last flex item, physically ends up
+ * outside the visible screen area (see README/PR: "Got it, close" was
+ * unreachable).
  *
- * Правильная позиция футера на экране не зависит от того, насколько шторка
- * протянута — это всегда нижний край вьюпорта (в отличие от шапки, которая
- * обязана двигаться вместе со шторкой). Поэтому вместо изменения раскладки
- * (что означало бы reflow на каждый кадр драга) футеру задаётся собственный
- * transform, компенсирующий translateY родителя: итоговое смещение на экране
- * равно нулю, и футер остаётся приклеенным к низу экрана при любом drag/snap,
- * оставаясь чистым transform-эффектом (композитинг, не layout).
+ * The footer's correct on-screen position doesn't depend on how far the
+ * sheet is extended — it's always the bottom edge of the viewport (unlike
+ * the header, which must move together with the sheet). So instead of
+ * changing layout (which would mean a reflow on every drag frame), the
+ * footer gets its own transform that cancels out the parent's translateY:
+ * the net on-screen shift is zero, and the footer stays glued to the
+ * bottom of the screen through any drag/snap, remaining a pure
+ * transform effect (compositing, not layout).
  */
 const footerStyle = computed(() => ({
   transform: `translate3d(0, ${-translateY.value}px, 0)`,
 }))
 
-// onMounted/onBeforeUnmount гарантированно выполняются только на клиенте
-// (это контракт Vue), поэтому внутри них isClient-проверки не нужны —
-// они нужны только в функциях, которые МОГУТ быть вызваны и из мест, не
-// защищённых жизненным циклом (watch(isOpen), updateViewportHeight и т.д.).
+// onMounted/onBeforeUnmount are guaranteed to run client-side only (this
+// is a Vue contract), so isClient checks aren't needed inside them —
+// they're only needed in functions that CAN also be called from places
+// not guarded by the lifecycle (watch(isOpen), updateViewportHeight, etc.).
 onMounted(() => {
   isMounted.value = true
   updateViewportHeight()
@@ -747,7 +754,7 @@ onBeforeUnmount(() => {
         @click="onBackdropClick"
       />
 
-      <!-- Панель -->
+      <!-- Panel -->
       <div
         ref="sheetRef"
         class="vbs-panel"
@@ -760,7 +767,7 @@ onBeforeUnmount(() => {
         tabindex="-1"
         @keydown="onSheetKeydown"
       >
-        <!-- Хваталка + header-слот -->
+        <!-- Grabber + header slot -->
         <div ref="grabberZoneRef" class="vbs-grabber-zone">
           <div class="vbs-grabber-row" @pointerdown="onGrabberPointerDown">
             <span class="vbs-grabber-bar" aria-hidden="true" />
@@ -770,21 +777,21 @@ onBeforeUnmount(() => {
           </div>
         </div>
 
-        <!-- Скроллируемый контент -->
+        <!-- Scrollable content -->
         <div
           ref="contentRef"
           class="vbs-content"
           :class="contentClass"
           @pointerdown="onContentPointerDown"
         >
-          <!-- contentInnerRef не растягивается вместе с .vbs-content (flex: 1),
-               поэтому его offsetHeight — реальная, неискажённая высота слота. -->
+          <!-- contentInnerRef doesn't stretch along with .vbs-content (flex: 1),
+               so its offsetHeight is the slot's real, undistorted height. -->
           <div ref="contentInnerRef">
             <slot :close="close" />
           </div>
         </div>
 
-        <!-- Фиксированный footer -->
+        <!-- Fixed footer -->
         <div v-if="$slots.footer" ref="footerRef" class="vbs-footer" :style="footerStyle">
           <slot name="footer" :close="close" />
         </div>
@@ -794,7 +801,7 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
-/* Корневая обёртка не должна создавать собственный layout-бокс. */
+/* The root wrapper shouldn't create a layout box of its own. */
 .vbs-root {
   display: contents;
 }
@@ -808,8 +815,8 @@ onBeforeUnmount(() => {
 }
 
 .vbs-panel {
-  /* Темизация через CSS-переменные — переопределяются извне без Tailwind:
-     .vbs-panel { --vbs-bg: #0a0a0a; } в глобальном CSS потребителя. */
+  /* Theming via CSS custom properties — overridden from the outside without
+     Tailwind: .vbs-panel { --vbs-bg: #0a0a0a; } in the consumer's global CSS. */
   --vbs-bg: #ffffff;
   --vbs-fg: #18181b;
   --vbs-radius: 1.5rem;
@@ -835,9 +842,9 @@ onBeforeUnmount(() => {
   color: var(--vbs-fg);
   box-shadow: var(--vbs-shadow), 0 0 0 1px var(--vbs-ring);
   will-change: transform;
-  /* Фолбэк для браузеров без поддержки dvh: сначала обычный vh, затем dvh —
-     если юнит не распознан, вся строка игнорируется и остаётся первое
-     (валидное) значение. */
+  /* Fallback for browsers without dvh support: plain vh first, then dvh —
+     if the unit isn't recognized, the whole line is ignored and the first
+     (valid) value stands. */
   height: 100vh;
   height: 100dvh;
   max-height: 100vh;
@@ -854,7 +861,7 @@ onBeforeUnmount(() => {
   }
 }
 
-/* Тёмная тема: автоматически по системной настройке... */
+/* Dark mode: automatically, based on the system setting... */
 @media (prefers-color-scheme: dark) {
   .vbs-panel {
     --vbs-bg: #171717;
@@ -864,8 +871,8 @@ onBeforeUnmount(() => {
     --vbs-border-color: #262626;
   }
 }
-/* ...и/или вручную через класс .dark на любом предке (конвенция Tailwind) —
-   не требует самого Tailwind, просто совместимо с этой практикой. */
+/* ...and/or manually via a .dark class on any ancestor (Tailwind's
+   convention) — doesn't require Tailwind itself, just compatible with it. */
 :global(.dark) .vbs-panel {
   --vbs-bg: #171717;
   --vbs-fg: #f4f4f5;
