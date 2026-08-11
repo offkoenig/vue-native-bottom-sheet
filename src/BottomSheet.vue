@@ -530,6 +530,57 @@ function cancelPending() {
   detachWindowListeners()
 }
 
+/*
+ * pointermove can fire far more often than the display actually paints —
+ * especially on high-sampling-rate touchscreens (120Hz+), where it isn't
+ * rate-limited to the compositor's pace the way it tends to be on a 60Hz
+ * screen. Writing translateY.value straight from the event handler means
+ * Vue's reactive flush (a microtask, not vsync-aligned) runs once per
+ * *input* sample rather than once per *frame* — extra, wasted reactive
+ * passes that don't correspond to an actual paint, which is what reads as
+ * "janky" rather than smooth, and is more noticeable the higher the
+ * display's refresh rate (less frame budget to absorb the overhead).
+ * Instead, onPointerMove only records the latest pointer position; a
+ * single rAF callback applies it (and computes rubber-band) once per
+ * frame, in step with the browser's own paint cadence.
+ */
+let dragRafId: number | null = null
+let latestDragClientY: number | null = null
+
+function computeDragTranslate(clientY: number): number {
+  const raw = startTranslate + (clientY - startY)
+  let next = raw
+
+  if (next < minTranslate.value) {
+    const overshoot = minTranslate.value - next
+    next = minTranslate.value - rubberBand(overshoot, viewportHeight.value, props.rubberBandResistance)
+  }
+  return Math.min(next, closedTranslate.value)
+}
+
+function flushDragFrame() {
+  dragRafId = null
+  if (latestDragClientY === null) return
+  translateY.value = computeDragTranslate(latestDragClientY)
+}
+
+function scheduleDragFrame() {
+  if (dragRafId !== null) return
+  dragRafId = requestAnimationFrame(flushDragFrame)
+}
+
+/** Cancels any pending frame and, if one was queued, applies it synchronously — so translateY reflects the exact last pointer position before a spring animation reads it as its start. */
+function finalizeDragFrame() {
+  if (dragRafId !== null) {
+    cancelAnimationFrame(dragRafId)
+    dragRafId = null
+  }
+  if (latestDragClientY !== null) {
+    translateY.value = computeDragTranslate(latestDragClientY)
+    latestDragClientY = null
+  }
+}
+
 function onPointerMove(e: PointerEvent) {
   if (e.pointerId !== activePointerId) return
 
@@ -554,17 +605,8 @@ function onPointerMove(e: PointerEvent) {
   if (dragPhase !== 'dragging') return
   e.preventDefault()
   pushSample(e.clientY)
-
-  const raw = startTranslate + (e.clientY - startY)
-  let next = raw
-
-  if (next < minTranslate.value) {
-    const overshoot = minTranslate.value - next
-    next = minTranslate.value - rubberBand(overshoot, viewportHeight.value, props.rubberBandResistance)
-  }
-  next = Math.min(next, closedTranslate.value)
-
-  translateY.value = next
+  latestDragClientY = e.clientY
+  scheduleDragFrame()
 }
 
 function onPointerUp(e: PointerEvent) {
@@ -576,6 +618,7 @@ function onPointerUp(e: PointerEvent) {
   isDragging.value = false
 
   if (!wasDragging) return
+  finalizeDragFrame()
 
   const velocity = getVelocity()
   emit('drag-end', velocity)
@@ -745,6 +788,7 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   cancelSpringAnimation()
+  if (dragRafId !== null) cancelAnimationFrame(dragRafId)
   detachWindowListeners()
   teardownContentResizeObserver()
   if (window.visualViewport) {
