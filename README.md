@@ -148,6 +148,7 @@ If that's not enough, `panelClass` / `contentClass` / `backdropClass` accept any
 | `closeOnEscape` | `boolean` | `true` | Close on the `Escape` key. |
 | `dismissible` | `boolean` | `true` | If `false`, swipe/backdrop/`Escape` won't close the sheet — only programmatic close works. |
 | `lockBodyScroll` | `boolean` | `true` | Lock `<body>` scroll while the sheet is open. |
+| `themeColor` | `string` | — | A CSS color applied to `<meta name="theme-color">` while the sheet is open (what mobile browsers, notably iOS Safari's toolbar, tint their UI chrome with) — restored to whatever it was before on close. The library can't sample the actual rendered color of arbitrary slot content, so this isn't automatic; pass the color your content actually is. |
 | `ariaLabel` | `string` | `'Panel'` | `aria-label` for the dialog. |
 | `zIndex` | `number` | `60` | Base z-index (backdrop = `zIndex`, panel = `zIndex + 1`). |
 | `panelClass` | `string \| object \| array` | — | Extra classes on the panel's root element. |

@@ -184,7 +184,12 @@ function closeProgrammatic() {
 
     <!-- ============== Sheets ============== -->
 
-    <BottomSheet v-model="basicOpen" :snap-points="[50, 100]" :respect-reduced-motion="false">
+    <BottomSheet
+      v-model="basicOpen"
+      :snap-points="[50, 100]"
+      :respect-reduced-motion="false"
+      theme-color="#5b4ee5"
+    >
       <template #header="{ close }">
         <div class="sheet-header">
           <h2>{{ t.basicHeader }}</h2>

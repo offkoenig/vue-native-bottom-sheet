@@ -276,6 +276,52 @@ function unlockScroll() {
 }
 
 /* ════════════════════════════════════════════════════════════════════ *
+ *  theme-color sync (opt-in via the themeColor prop)
+ * ════════════════════════════════════════════════════════════════════ */
+
+let isThemeColorApplied = false
+let savedThemeColorMeta: { existed: boolean; content: string } | null = null
+
+function getThemeColorMeta(): HTMLMetaElement | null {
+  return document.querySelector<HTMLMetaElement>('meta[name="theme-color"]')
+}
+
+function applyThemeColor() {
+  if (!isClient || !props.themeColor || isThemeColorApplied) return
+  isThemeColorApplied = true
+  let meta = getThemeColorMeta()
+  if (meta) {
+    savedThemeColorMeta = { existed: true, content: meta.getAttribute('content') ?? '' }
+  } else {
+    meta = document.createElement('meta')
+    meta.setAttribute('name', 'theme-color')
+    document.head.appendChild(meta)
+    savedThemeColorMeta = { existed: false, content: '' }
+  }
+  meta.setAttribute('content', props.themeColor)
+}
+
+function restoreThemeColor() {
+  if (!isClient || !isThemeColorApplied) return
+  isThemeColorApplied = false
+  const meta = getThemeColorMeta()
+  if (meta && savedThemeColorMeta) {
+    if (savedThemeColorMeta.existed) meta.setAttribute('content', savedThemeColorMeta.content)
+    else meta.remove()
+  }
+  savedThemeColorMeta = null
+}
+
+/** Live-updates the tag's content if themeColor changes while the sheet is already open — doesn't touch savedThemeColorMeta, which must keep holding the pre-open value for a correct restore on close. */
+watch(
+  () => props.themeColor,
+  (color) => {
+    if (!isThemeColorApplied || !color) return
+    getThemeColorMeta()?.setAttribute('content', color)
+  },
+)
+
+/* ════════════════════════════════════════════════════════════════════ *
  *  Auto-fitting to content height (the 'content' snap point)
  * ════════════════════════════════════════════════════════════════════ */
 
@@ -362,6 +408,7 @@ function openSheet() {
 
   isInDom.value = true
   lockScroll()
+  applyThemeColor()
   nextTick(() => {
     currentSnapIndex.value = clampedDefaultIndex.value
     // Measure BEFORE reading snapTranslates below — otherwise, the very
@@ -409,6 +456,7 @@ watch(isOpen, (open) => {
     springAnimateTo(closedTranslate.value, lastVelocity, () => {
       isInDom.value = false
       unlockScroll()
+      restoreThemeColor()
       teardownContentResizeObserver()
       emit('closed')
       previouslyFocused?.focus?.()
@@ -797,7 +845,10 @@ onBeforeUnmount(() => {
     window.removeEventListener('resize', onViewportResize)
   }
   document.removeEventListener('keydown', onDocumentKeydown)
-  if (isOpen.value) unlockScroll()
+  if (isOpen.value) {
+    unlockScroll()
+    restoreThemeColor()
+  }
 })
 </script>
 

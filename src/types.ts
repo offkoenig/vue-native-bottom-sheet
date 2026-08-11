@@ -45,6 +45,18 @@ export interface BottomSheetProps {
   dismissible?: boolean
   /** Lock body scroll while the sheet is open (accounting for iOS Safari quirks). */
   lockBodyScroll?: boolean
+  /**
+   * A CSS color to apply to `<meta name="theme-color">` while the sheet is
+   * open — this is what mobile browsers (most notably iOS Safari's
+   * toolbar) tint their UI chrome with. The library has no way to sample
+   * the actual rendered color of arbitrary slot content (gradients,
+   * images, nested elements aren't reliably reducible to one color), so
+   * this isn't automatic — pass whatever color your content actually is.
+   * The previous `content` value (or the tag's absence) is restored when
+   * the sheet closes. Left unset by default: no meta tag is touched
+   * unless you opt in.
+   */
+  themeColor?: string
   /** aria-label for the dialog. */
   ariaLabel?: string
   /** Base z-index (backdrop = zIndex, the panel itself = zIndex + 1). */
