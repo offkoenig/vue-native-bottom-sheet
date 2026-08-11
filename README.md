@@ -1,4 +1,4 @@
-🇬🇧 **English** · [🇷🇺 Русский](./README.ru.md)
+🇬🇧 **English** · [🇷🇺 Русский](./docs/README.ru.md)
 
 # vue-native-bottom-sheet
 

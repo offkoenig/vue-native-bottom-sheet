@@ -1,6 +1,6 @@
 {
   "name": "vue-native-bottom-sheet",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Production-ready bottom sheet for Vue 3 with native iOS/Android-like drag physics (velocity-based inertia, rubber-band, spring animations). Works standalone in any Vue 3 app and as a Nuxt 3 module.",
   "repository": {
     "type": "git",
