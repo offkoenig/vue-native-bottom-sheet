@@ -333,6 +333,8 @@ Before publishing: replace the placeholder in `LICENSE`, and rename the package 
 
 **It opens/closes instantly, with no animation.** This is almost always `prefers-reduced-motion: reduce` being active in your OS or browser — the component honors it on purpose (see Accessibility above), so this is by design, not a bug. To check: in Chrome/Edge DevTools, open the Command Menu (`Cmd/Ctrl+Shift+P`) → "Emulate CSS prefers-reduced-motion" → make sure it's not set to "reduce"; or check your OS accessibility settings (e.g. "Reduce motion" on macOS/iOS, "Reduce animations" on GNOME). If you specifically want the sheet to always animate regardless of that setting (a demo/showcase page, for instance), pass `:respect-reduced-motion="false"`.
 
+**On a touch device, an open sheet occasionally triggers the browser's pull-to-refresh.** With `lockBodyScroll` (the default), the component sets `overscroll-behavior-y: none` on both `<html>` and `<body>` — that's what disables Chrome/Android's pull-to-refresh gesture recognizer, which is otherwise unaffected by the `position: fixed` scroll-lock trick itself. If you've set `:lock-body-scroll="false"`, that protection is off along with the rest of the scroll lock — either re-enable it, or add `overscroll-behavior-y: none` on `<html>`/`<body>` yourself for as long as the sheet is open.
+
 ## Requirements
 
 - Vue ≥ 3.4 (needs `defineModel()`).

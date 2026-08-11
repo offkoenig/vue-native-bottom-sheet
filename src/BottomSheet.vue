@@ -223,12 +223,14 @@ function springAnimateTo(target: number, initialVelocity: number, onDone?: () =>
 
 let savedScrollY = 0
 let savedBodyStyles: Record<string, string> = {}
+let savedHtmlOverscrollBehaviorY = ''
 let isScrollLocked = false
 
 function lockScroll() {
   if (!isClient || !props.lockBodyScroll || isScrollLocked) return
   isScrollLocked = true
   const body = document.body
+  const html = document.documentElement
   savedScrollY = window.scrollY
   savedBodyStyles = {
     position: body.style.position,
@@ -237,6 +239,7 @@ function lockScroll() {
     right: body.style.right,
     width: body.style.width,
     overflow: body.style.overflow,
+    overscrollBehaviorY: body.style.overscrollBehaviorY,
   }
   body.style.position = 'fixed'
   body.style.top = `-${savedScrollY}px`
@@ -244,18 +247,31 @@ function lockScroll() {
   body.style.right = '0'
   body.style.width = '100%'
   body.style.overflow = 'hidden'
+  // `position: fixed` alone stops body's own scrollbar from moving, but
+  // browsers' pull-to-refresh (Chrome/Android, PWA/WebView shells) is a
+  // separate gesture recognizer keyed off overscroll-behavior-y on the
+  // viewport, unaffected by that trick — hence it firing intermittently
+  // even with the sheet "locking" scroll. Different engines key it off
+  // <html> or <body>, so both get it, saved/restored the same way as the
+  // rest of the locked styles.
+  body.style.overscrollBehaviorY = 'none'
+  savedHtmlOverscrollBehaviorY = html.style.overscrollBehaviorY
+  html.style.overscrollBehaviorY = 'none'
 }
 
 function unlockScroll() {
   if (!isClient || !props.lockBodyScroll || !isScrollLocked) return
   isScrollLocked = false
   const body = document.body
+  const html = document.documentElement
   body.style.position = savedBodyStyles.position ?? ''
   body.style.top = savedBodyStyles.top ?? ''
   body.style.left = savedBodyStyles.left ?? ''
   body.style.right = savedBodyStyles.right ?? ''
   body.style.width = savedBodyStyles.width ?? ''
   body.style.overflow = savedBodyStyles.overflow ?? ''
+  body.style.overscrollBehaviorY = savedBodyStyles.overscrollBehaviorY ?? ''
+  html.style.overscrollBehaviorY = savedHtmlOverscrollBehaviorY
   window.scrollTo(0, savedScrollY)
 }
 
@@ -812,6 +828,12 @@ onBeforeUnmount(() => {
   background: #000;
   backdrop-filter: blur(2px);
   -webkit-backdrop-filter: blur(2px);
+  /* No pointer/touch handler here calls preventDefault (only a click
+     listener), so without this, a touch that starts on the backdrop and
+     moves is left for the browser to interpret as a generic scroll/nav
+     gesture — on touch devices that's part of what can trigger
+     pull-to-refresh even while body scroll is locked. */
+  touch-action: none;
 }
 
 .vbs-panel {
@@ -910,8 +932,6 @@ onBeforeUnmount(() => {
   overflow-y: auto;
   overscroll-behavior-y: contain;
   touch-action: pan-y;
-  padding-left: 1.25rem;
-  padding-right: 1.25rem;
 }
 
 .vbs-footer {
