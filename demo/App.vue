@@ -15,6 +15,16 @@ const nonDismissibleOpen = ref(false)
 /* ---------- Custom theme ---------- */
 const themeOpen = ref(false)
 
+/* ---------- Fits its content ---------- */
+const fitOpen = ref(false)
+const fitItems = ref([1, 2])
+function addFitItem() {
+  fitItems.value.push(fitItems.value.length + 1)
+}
+function removeFitItem() {
+  if (fitItems.value.length > 1) fitItems.value.pop()
+}
+
 /* ---------- Physics playground ---------- */
 const playgroundOpen = ref(false)
 const stiffness = ref(300)
@@ -91,6 +101,12 @@ function closeProgrammatic() {
             <h3>{{ t.themeTitle }}</h3>
             <p>{{ t.themeDesc }}</p>
             <button class="btn" type="button" @click="themeOpen = true">{{ t.themeOpen }}</button>
+          </article>
+
+          <article class="card">
+            <h3>{{ t.fitTitle }}</h3>
+            <p>{{ t.fitDesc }}</p>
+            <button class="btn" type="button" @click="fitOpen = true">{{ t.fitOpen }}</button>
           </article>
         </div>
       </section>
@@ -224,6 +240,27 @@ function closeProgrammatic() {
         </div>
       </template>
       <p class="sheet-text">{{ t.themeBody }}</p>
+    </BottomSheet>
+
+    <BottomSheet v-model="fitOpen" :snap-points="['content']">
+      <template #header="{ close }">
+        <div class="sheet-header">
+          <h2>{{ t.fitHeader }}</h2>
+          <button class="icon-btn" type="button" @click="close">✕</button>
+        </div>
+      </template>
+      <p class="sheet-text">{{ t.fitBody }}</p>
+      <ul class="fit-list">
+        <li v-for="n in fitItems" :key="n">{{ t.fitItem.replace('{n}', String(n)) }}</li>
+      </ul>
+      <template #footer>
+        <div class="fit-actions">
+          <button class="btn btn-ghost" type="button" @click="removeFitItem">
+            {{ t.fitRemoveItem }}
+          </button>
+          <button class="btn" type="button" @click="addFitItem">{{ t.fitAddItem }}</button>
+        </div>
+      </template>
     </BottomSheet>
 
     <BottomSheet
@@ -545,6 +582,29 @@ input[type='range']::-moz-range-thumb {
 }
 .sheet-filler {
   height: 60vh;
+}
+
+.fit-list {
+  list-style: none;
+  margin: 0 0 4px;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+.fit-list li {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 14px;
+  font-size: 14px;
+  color: var(--muted);
+}
+.fit-actions {
+  display: flex;
+  gap: 12px;
+}
+.fit-actions .btn {
+  flex: 1;
 }
 
 /* Custom theme example — proves theming needs no prop, just CSS on panelClass */

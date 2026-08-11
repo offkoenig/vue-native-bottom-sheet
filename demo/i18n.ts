@@ -18,7 +18,7 @@ const messages = {
     tryIt: 'Try every example on a touch device for the full effect — mouse drag works too.',
 
     examplesKicker: 'Examples',
-    examplesTitle: 'Four ways to configure it',
+    examplesTitle: 'Five ways to configure it',
 
     basicTitle: 'Basic',
     basicDesc: 'Default snap points [50, 100]. Flick down fast enough and it closes even from a small drag.',
@@ -45,6 +45,15 @@ const messages = {
     themeOpen: 'Open sheet',
     themeHeader: 'Dark theme',
     themeBody: 'Colors here come entirely from CSS custom properties overridden on .vbs-panel — no prop for this, just plain CSS.',
+
+    fitTitle: 'Fits its content',
+    fitDesc: '`:snap-points="[\'content\']"` — no percentage guessing. Height is measured via ResizeObserver.',
+    fitOpen: 'Open sheet',
+    fitHeader: 'Auto height',
+    fitBody: 'This sheet is exactly as tall as its content, nothing more. Add or remove rows below — it re-springs to the new height live, while staying open.',
+    fitAddItem: 'Add row',
+    fitRemoveItem: 'Remove row',
+    fitItem: 'Row {n}',
 
     playgroundKicker: 'Playground',
     playgroundTitle: 'Feel the physics change live',
@@ -78,7 +87,7 @@ const messages = {
     tryIt: 'Для полного эффекта пробуйте на тач-устройстве — но и мышью тоже работает.',
 
     examplesKicker: 'Примеры',
-    examplesTitle: 'Четыре варианта настройки',
+    examplesTitle: 'Пять вариантов настройки',
 
     basicTitle: 'Базовый',
     basicDesc: 'Точки прилипания [50, 100] по умолчанию. Быстрый свайп вниз закрывает даже при небольшом протягивании.',
@@ -105,6 +114,15 @@ const messages = {
     themeOpen: 'Открыть шторку',
     themeHeader: 'Тёмная тема',
     themeBody: 'Цвета здесь целиком заданы через переопределённые CSS-переменные на .vbs-panel — без единого пропа, просто CSS.',
+
+    fitTitle: 'Подстраивается под контент',
+    fitDesc: '`:snap-points="[\'content\']"` — никаких процентов на глаз. Высота измеряется через ResizeObserver.',
+    fitOpen: 'Открыть шторку',
+    fitHeader: 'Авто-высота',
+    fitBody: 'Эта шторка ровно такой высоты, сколько занимает контент — не больше. Добавляйте/убирайте строки ниже — она сама доедет до новой высоты, не закрываясь.',
+    fitAddItem: 'Добавить строку',
+    fitRemoveItem: 'Убрать строку',
+    fitItem: 'Строка {n}',
 
     playgroundKicker: 'Плейграунд',
     playgroundTitle: 'Почувствуйте физику вживую',

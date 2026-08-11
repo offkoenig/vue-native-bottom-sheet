@@ -71,6 +71,9 @@ const isInDom = ref(false) // ленивый маунт: контент ренд
 
 const sheetRef = ref<HTMLElement | null>(null)
 const contentRef = ref<HTMLElement | null>(null)
+const grabberZoneRef = ref<HTMLElement | null>(null)
+const contentInnerRef = ref<HTMLElement | null>(null)
+const footerRef = ref<HTMLElement | null>(null)
 
 /* ════════════════════════════════════════════════════════════════════ *
  *  Геометрия: перевод snap-точек (%) в пиксели translateY
@@ -78,14 +81,10 @@ const contentRef = ref<HTMLElement | null>(null)
 
 const viewportHeight = ref(0)
 
-const sortedSnapPoints = computed(() => {
-  const points = props.snapPoints?.length ? props.snapPoints : [100]
-  return [...points].sort((a, b) => a - b)
-})
+const usesContentFit = computed(() => (props.snapPoints ?? []).some((p) => p === 'content'))
 
-const clampedDefaultIndex = computed(() =>
-  Math.min(Math.max(props.defaultSnapPoint, 0), sortedSnapPoints.value.length - 1),
-)
+/** Измеренная «естественная» высота header+content+footer для snap-точки 'content'. */
+const fitContentHeight = ref(0)
 
 /** 0 = самая открытая позиция (100% вьюпорта), viewportHeight = позиция «закрыто». */
 function percentToTranslate(percent: number): number {
@@ -93,7 +92,41 @@ function percentToTranslate(percent: number): number {
   return viewportHeight.value * (1 - clamped / 100)
 }
 
-const snapTranslates = computed(() => sortedSnapPoints.value.map(percentToTranslate))
+interface ResolvedSnapPoint {
+  raw: number | 'content'
+  /** translateY в px. */
+  translate: number
+  /** Эквивалент в % вьюпорта — используется для сортировки и payload события `snap`. */
+  percent: number
+}
+
+/**
+ * 'content' резолвится в translate независимо от percentToTranslate: высота
+ * контента — величина в px, гонять её через проценты туда-обратно не нужно
+ * и вносит только погрешность округления. Сортировка по percent means
+ * порядок точек пересчитывается сам, если измеренная высота 'content'
+ * когда-нибудь обгонит/отстанет от соседней фиксированной точки.
+ */
+const resolvedSnapPoints = computed<ResolvedSnapPoint[]>(() => {
+  const points = props.snapPoints?.length ? props.snapPoints : [100]
+  const resolved = points.map((raw): ResolvedSnapPoint => {
+    if (raw === 'content') {
+      const height = Math.min(fitContentHeight.value, viewportHeight.value)
+      const translate = Math.max(viewportHeight.value - height, 0)
+      const percent = viewportHeight.value > 0 ? (height / viewportHeight.value) * 100 : 0
+      return { raw, translate, percent }
+    }
+    const percent = Math.min(Math.max(raw, 0), 100)
+    return { raw, translate: percentToTranslate(percent), percent }
+  })
+  return resolved.sort((a, b) => a.percent - b.percent)
+})
+
+const clampedDefaultIndex = computed(() =>
+  Math.min(Math.max(props.defaultSnapPoint, 0), resolvedSnapPoints.value.length - 1),
+)
+
+const snapTranslates = computed(() => resolvedSnapPoints.value.map((r) => r.translate))
 /** translateY самой открытой точки — верхняя граница, выше которой начинается rubber-band. */
 const minTranslate = computed(() => snapTranslates.value[snapTranslates.value.length - 1] ?? 0)
 /** translateY полностью закрытого состояния — вся панель под нижним краем экрана. */
@@ -124,6 +157,8 @@ function rubberBand(overshoot: number, dimension: number, constant: number): num
 
 let rafId: number | null = null
 let reducedMotionQuery: MediaQueryList | null = null
+/** Последняя цель пружины — чтобы content-resize-обработчик не перезапускал анимацию на тот же таргет. */
+let lastSpringTarget: number | null = null
 
 function cancelSpringAnimation() {
   if (rafId !== null) {
@@ -138,6 +173,7 @@ function cancelSpringAnimation() {
  */
 function springAnimateTo(target: number, initialVelocity: number, onDone?: () => void) {
   cancelSpringAnimation()
+  lastSpringTarget = target
 
   if (props.respectReducedMotion && reducedMotionQuery?.matches) {
     translateY.value = target
@@ -222,6 +258,61 @@ function unlockScroll() {
 }
 
 /* ════════════════════════════════════════════════════════════════════ *
+ *  Авто-подгонка под высоту контента (snap-точка 'content')
+ * ════════════════════════════════════════════════════════════════════ */
+
+let contentResizeObserver: ResizeObserver | null = null
+
+/**
+ * grabberZoneRef и footerRef не участвуют в flex-растяжении (flex-shrink: 0),
+ * поэтому их offsetHeight уже равен естественной высоте. А вот .vbs-content
+ * растягивается на всё доступное место (flex: 1 1 auto) — измерять его
+ * напрямую бессмысленно, отсюда contentInnerRef: обычный блочный div внутри
+ * скролл-контейнера, не участвующий в растяжении, чей offsetHeight и есть
+ * реальная высота слота, независимо от того, сколько места дал ему flex.
+ */
+function measureFitContentHeight() {
+  const grabberH = grabberZoneRef.value?.offsetHeight ?? 0
+  const contentH = contentInnerRef.value?.offsetHeight ?? 0
+  const footerH = footerRef.value?.offsetHeight ?? 0
+  fitContentHeight.value = grabberH + contentH + footerH
+}
+
+/**
+ * Живая реакция на изменение высоты контента, пока шторка уже открыта
+ * (раскрылся аккордеон, догрузилась картинка и т.п.): если сейчас активна
+ * snap-точка 'content', пружина доезжает до новой высоты. Не встревает в
+ * активный драг пользователя и не дублирует анимацию, если высота не
+ * поменялась (initial-колбэк ResizeObserver срабатывает сразу после
+ * observe(), уже после того, как открывающая анимация её учла).
+ */
+function onContentResize() {
+  measureFitContentHeight()
+  if (!isOpen.value || !isInDom.value || isDragging.value) return
+  const target = snapTranslates.value[currentSnapIndex.value]
+  if (target === undefined) return
+  if (lastSpringTarget !== null && Math.abs(target - lastSpringTarget) < 0.5) return
+  const targetIndex = currentSnapIndex.value
+  springAnimateTo(target, 0, () => {
+    emit('snap', targetIndex, resolvedSnapPoints.value[targetIndex]?.percent ?? 0)
+  })
+}
+
+function setupContentResizeObserver() {
+  if (!isClient || !usesContentFit.value || typeof ResizeObserver === 'undefined') return
+  contentResizeObserver?.disconnect()
+  contentResizeObserver = new ResizeObserver(onContentResize)
+  for (const el of [grabberZoneRef.value, contentInnerRef.value, footerRef.value]) {
+    if (el) contentResizeObserver.observe(el)
+  }
+}
+
+function teardownContentResizeObserver() {
+  contentResizeObserver?.disconnect()
+  contentResizeObserver = null
+}
+
+/* ════════════════════════════════════════════════════════════════════ *
  *  Открытие / закрытие
  * ════════════════════════════════════════════════════════════════════ */
 
@@ -252,6 +343,13 @@ function openSheet() {
   lockScroll()
   nextTick(() => {
     currentSnapIndex.value = clampedDefaultIndex.value
+    // Измеряем ДО чтения snapTranslates ниже — иначе 'content' в самый первый
+    // раз откроется на fitContentHeight.value по умолчанию (0), т.е. в закрытую
+    // позицию.
+    if (usesContentFit.value) {
+      measureFitContentHeight()
+      setupContentResizeObserver()
+    }
     requestAnimationFrame(() => {
       springAnimateTo(snapTranslates.value[currentSnapIndex.value], 0, () => {
         emit('opened')
@@ -290,6 +388,7 @@ watch(isOpen, (open) => {
     springAnimateTo(closedTranslate.value, lastVelocity, () => {
       isInDom.value = false
       unlockScroll()
+      teardownContentResizeObserver()
       emit('closed')
       previouslyFocused?.focus?.()
     })
@@ -302,11 +401,11 @@ watch(isOpen, (open) => {
  * ════════════════════════════════════════════════════════════════════ */
 
 function snapToIndex(index: number) {
-  const clamped = Math.min(Math.max(index, 0), sortedSnapPoints.value.length - 1)
+  const clamped = Math.min(Math.max(index, 0), resolvedSnapPoints.value.length - 1)
   currentSnapIndex.value = clamped
   if (isOpen.value) {
     springAnimateTo(snapTranslates.value[clamped], 0, () => {
-      emit('snap', clamped, sortedSnapPoints.value[clamped])
+      emit('snap', clamped, resolvedSnapPoints.value[clamped]?.percent ?? 0)
     })
   }
 }
@@ -507,7 +606,7 @@ function settle(velocity: number) {
 
   currentSnapIndex.value = targetIndex
   springAnimateTo(snaps[targetIndex], velocity, () => {
-    emit('snap', targetIndex, sortedSnapPoints.value[targetIndex])
+    emit('snap', targetIndex, resolvedSnapPoints.value[targetIndex]?.percent ?? 0)
   })
 }
 
@@ -552,6 +651,9 @@ function onSheetKeydown(e: KeyboardEvent) {
 
 function onViewportResize() {
   updateViewportHeight()
+  // Смена ширины (напр. поворот экрана) может изменить перенос строк в
+  // контенте и его естественную высоту — пересчитываем перед чтением snapTranslates.
+  if (usesContentFit.value) measureFitContentHeight()
   if (isInDom.value && !isDragging.value && !isAnimating.value) {
     translateY.value = snapTranslates.value[currentSnapIndex.value] ?? closedTranslate.value
   }
@@ -621,6 +723,7 @@ onMounted(() => {
 onBeforeUnmount(() => {
   cancelSpringAnimation()
   detachWindowListeners()
+  teardownContentResizeObserver()
   if (window.visualViewport) {
     window.visualViewport.removeEventListener('resize', onViewportResize)
   } else {
@@ -658,7 +761,7 @@ onBeforeUnmount(() => {
         @keydown="onSheetKeydown"
       >
         <!-- Хваталка + header-слот -->
-        <div class="vbs-grabber-zone">
+        <div ref="grabberZoneRef" class="vbs-grabber-zone">
           <div class="vbs-grabber-row" @pointerdown="onGrabberPointerDown">
             <span class="vbs-grabber-bar" aria-hidden="true" />
           </div>
@@ -674,11 +777,15 @@ onBeforeUnmount(() => {
           :class="contentClass"
           @pointerdown="onContentPointerDown"
         >
-          <slot :close="close" />
+          <!-- contentInnerRef не растягивается вместе с .vbs-content (flex: 1),
+               поэтому его offsetHeight — реальная, неискажённая высота слота. -->
+          <div ref="contentInnerRef">
+            <slot :close="close" />
+          </div>
         </div>
 
         <!-- Фиксированный footer -->
-        <div v-if="$slots.footer" class="vbs-footer" :style="footerStyle">
+        <div v-if="$slots.footer" ref="footerRef" class="vbs-footer" :style="footerStyle">
           <slot name="footer" :close="close" />
         </div>
       </div>

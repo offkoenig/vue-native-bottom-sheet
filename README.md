@@ -14,7 +14,7 @@ Works as a regular component library in **any** Vue 3 (≥3.4) project — Vite,
 - Only `transform: translate3d(...)` changes during a drag — a genuinely stable 60 FPS.
 - Velocity-based inertia: a fast downward swipe closes the sheet even if only ~10% of the height was dragged.
 - Rubber-band resistance when dragging past the fully-open point — the same formula WebKit/UIScrollView uses.
-- Configurable snap points; every settle/open/close animation is a spring (Hooke's law), not a CSS transition.
+- Configurable snap points — fixed percentages or `'content'` (auto-fits and live-adapts to actual content height); every settle/open/close animation is a spring (Hooke's law), not a CSS transition.
 - Body scroll lock that accounts for iOS Safari, with a smooth handoff between content scroll and sheet drag.
 - Escape closes, Tab keeps focus trapped inside the panel, and it respects `prefers-reduced-motion`.
 - Dark mode out of the box — via `prefers-color-scheme` and/or a `.dark` class on an ancestor.
@@ -134,7 +134,7 @@ If that's not enough, `panelClass` / `contentClass` / `backdropClass` accept any
 
 | Prop | Type | Default | Description |
 |---|---|---|---|
-| `snapPoints` | `number[]` | `[50, 100]` | Snap points as % of viewport height. Order doesn't matter — sorted automatically. |
+| `snapPoints` | `(number \| 'content')[]` | `[50, 100]` | Snap points as % of viewport height. `'content'` measures the actual rendered height of header+default+footer via `ResizeObserver` instead (capped at 100dvh) and re-springs live if that content changes size while open. Order doesn't matter — sorted automatically, including around a moving `'content'` point. |
 | `defaultSnapPoint` | `number` | `0` | Index into `snapPoints` the sheet opens to by default. |
 | `closeThreshold` | `number` | `0.5` | Swipe velocity threshold (px/ms) above which an inertial transition/close kicks in. |
 | `rubberBandResistance` | `number` | `0.55` | Resistance (0..1) of the rubber-band effect above the top snap point. `0.55` is WebKit/UIScrollView's own constant. |
@@ -153,6 +153,20 @@ If that's not enough, `panelClass` / `contentClass` / `backdropClass` accept any
 | `panelClass` | `string \| object \| array` | — | Extra classes on the panel's root element. |
 | `contentClass` | `string \| object \| array` | — | Extra classes on the scrollable content area. |
 | `backdropClass` | `string \| object \| array` | — | Extra classes on the backdrop. |
+
+### Fitting to content height
+
+Instead of guessing a percentage, a snap point can be the literal string `'content'`:
+
+```vue
+<BottomSheet v-model="isOpen" :snap-points="['content']">
+  <p>As tall as I am, no taller.</p>
+</BottomSheet>
+```
+
+Under the hood, `header` + default slot + `footer` are measured with a `ResizeObserver` (capped at `100dvh`) and converted to a translateY exactly like a percentage point — same sort order, same rubber-band, same spring. If the content's height changes while the sheet is open (an accordion expands, an image loads), it re-springs to the new height live, without closing.
+
+`'content'` can be mixed with fixed percentages, e.g. `:snap-points="['content', 100]"` opens sized to content but still lets a fast upward flick take it to 100%. Pairing it with a point the content can never exceed (`100`) keeps sort order stable; mixing it with an *intermediate* fixed point (e.g. `['content', 50]`) is supported too, but if the measured content height crosses that point, the point order — and therefore what index a given snap position corresponds to — changes accordingly.
 
 ## Events (Emits)
 
@@ -291,7 +305,7 @@ npm run demo:dev     # Vite dev server with HMR
 npm run demo:build   # builds demo-dist/index.html — a single self-contained file, open it directly in a browser
 ```
 
-It covers: default snap points, multiple snap points, a non-dismissible sheet, custom theming through CSS variables, a live physics playground (drag the sliders, then drag the sheet), and programmatic control through a template ref. Includes an EN/RU toggle in the top-right corner.
+It covers: default snap points, multiple snap points, a non-dismissible sheet, custom theming through CSS variables, fitting to content height (`'content'` snap point, add/remove rows while it's open), a live physics playground (drag the sliders, then drag the sheet), and programmatic control through a template ref. Includes an EN/RU toggle in the top-right corner.
 
 ## Building from source
 
