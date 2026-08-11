@@ -46,6 +46,17 @@ export interface BottomSheetProps {
   /** Lock body scroll while the sheet is open (accounting for iOS Safari quirks). */
   lockBodyScroll?: boolean
   /**
+   * If your app's actual scrollable container isn't `<body>`/`window` —
+   * e.g. an app shell with its own `overflow-y: auto` wrapper — pass a CSS
+   * selector or a direct element reference here. Its scroll gets locked
+   * (via `overflow: hidden` + `overscroll-behavior-y: none`) alongside the
+   * `<body>` lock for as long as the sheet is open; the `<body>` lock
+   * itself becomes a harmless no-op if body was never the thing scrolling.
+   * Governed by the same `lockBodyScroll` switch — set that to false to
+   * disable both.
+   */
+  lockScrollTarget?: string | HTMLElement
+  /**
    * A CSS color to apply to `<meta name="theme-color">` while the sheet is
    * open — this is what mobile browsers (most notably iOS Safari's
    * toolbar) tint their UI chrome with. The library has no way to sample

@@ -148,6 +148,7 @@ If that's not enough, `panelClass` / `contentClass` / `backdropClass` accept any
 | `closeOnEscape` | `boolean` | `true` | Close on the `Escape` key. |
 | `dismissible` | `boolean` | `true` | If `false`, swipe/backdrop/`Escape` won't close the sheet — only programmatic close works. |
 | `lockBodyScroll` | `boolean` | `true` | Lock `<body>` scroll while the sheet is open. |
+| `lockScrollTarget` | `string \| HTMLElement` | — | If your app's actual scrollable container isn't `<body>`/`window` (an app shell with its own `overflow-y: auto` wrapper, say), a CSS selector or element here gets its scroll locked too, alongside `<body>`. Governed by the same `lockBodyScroll` switch. |
 | `themeColor` | `string` | — | A CSS color applied to `<meta name="theme-color">` while the sheet is open (what mobile browsers, notably iOS Safari's toolbar, tint their UI chrome with) — restored to whatever it was before on close. The library can't sample the actual rendered color of arbitrary slot content, so this isn't automatic; pass the color your content actually is. |
 | `ariaLabel` | `string` | `'Panel'` | `aria-label` for the dialog. |
 | `zIndex` | `number` | `60` | Base z-index (backdrop = `zIndex`, panel = `zIndex + 1`). |
@@ -335,6 +336,10 @@ Before publishing: replace the placeholder in `LICENSE`, and rename the package 
 **It opens/closes instantly, with no animation.** This is almost always `prefers-reduced-motion: reduce` being active in your OS or browser — the component honors it on purpose (see Accessibility above), so this is by design, not a bug. To check: in Chrome/Edge DevTools, open the Command Menu (`Cmd/Ctrl+Shift+P`) → "Emulate CSS prefers-reduced-motion" → make sure it's not set to "reduce"; or check your OS accessibility settings (e.g. "Reduce motion" on macOS/iOS, "Reduce animations" on GNOME). If you specifically want the sheet to always animate regardless of that setting (a demo/showcase page, for instance), pass `:respect-reduced-motion="false"`.
 
 **On a touch device, an open sheet occasionally triggers the browser's pull-to-refresh.** With `lockBodyScroll` (the default), the component sets `overscroll-behavior-y: none` on both `<html>` and `<body>` — that's what disables Chrome/Android's pull-to-refresh gesture recognizer, which is otherwise unaffected by the `position: fixed` scroll-lock trick itself. If you've set `:lock-body-scroll="false"`, that protection is off along with the rest of the scroll lock — either re-enable it, or add `overscroll-behavior-y: none` on `<html>`/`<body>` yourself for as long as the sheet is open.
+
+**The page behind the sheet still scrolls even with `lockBodyScroll` on.** `lockBodyScroll` locks `<body>`/`window`. If your app's actual scroll container is something else — an app-shell wrapper with its own `overflow-y: auto`, for instance — locking `<body>` is a no-op for it. Pass that element (or a CSS selector for it) as `lockScrollTarget`.
+
+**A focused input inside the sheet triggers the on-screen keyboard, and a translucent gap appears at the bottom.** iOS Safari's keyboard shrinks and pans the *visual* viewport, while a `position: fixed` panel stays anchored to the *layout* viewport — the two diverge once the keyboard is up, which is what the gap is. The component compensates automatically by tracking `visualViewport`'s `resize`/`scroll` events and shifting the panel to match. This has been reasoned through against documented `visualViewport` behavior and covered by automated tests for everything *except* the on-screen-keyboard case itself — headless browser automation can't trigger a real iOS keyboard, so that specific path hasn't been confirmed on physical hardware. If you still see the gap, please open an issue with your iOS/Safari version.
 
 ## Requirements
 

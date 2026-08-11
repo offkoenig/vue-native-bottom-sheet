@@ -138,9 +138,31 @@ const translateY = ref(0)
 const isDragging = ref(false)
 const isAnimating = ref(false)
 
+/**
+ * `position: fixed` stays anchored to the LAYOUT viewport, but iOS
+ * Safari's on-screen keyboard only shrinks and pans the VISUAL viewport
+ * (`visualViewport.offsetTop` grows as the page pans to keep the focused
+ * input visible above the keyboard) — `window.innerHeight` doesn't
+ * reliably shrink to match. Left uncompensated, a `bottom: 0` panel stays
+ * pinned to the layout viewport's bottom, which ends up hidden under the
+ * keyboard, leaving a visible gap between the panel and the actually-
+ * visible bottom edge of the screen. `keyboardInset` is that gap, applied
+ * as an extra upward shift in `sheetStyle` below. It's 0 whenever there's
+ * no keyboard (or no visualViewport support), so this is a no-op outside
+ * that specific scenario.
+ */
+const keyboardInset = ref(0)
+
 function updateViewportHeight() {
   if (!isClient) return
-  viewportHeight.value = window.visualViewport?.height ?? window.innerHeight
+  const vv = window.visualViewport
+  if (vv) {
+    viewportHeight.value = vv.height
+    keyboardInset.value = Math.max(window.innerHeight - vv.offsetTop - vv.height, 0)
+  } else {
+    viewportHeight.value = window.innerHeight
+    keyboardInset.value = 0
+  }
 }
 
 /* ════════════════════════════════════════════════════════════════════ *
@@ -160,6 +182,8 @@ let rafId: number | null = null
 let reducedMotionQuery: MediaQueryList | null = null
 /** Last spring target — so the content-resize handler doesn't restart the animation toward the same target. */
 let lastSpringTarget: number | null = null
+/** The onDone of whichever spring is currently in flight — lets a mid-animation re-target (see onViewportResize) preserve it instead of silently dropping it. */
+let currentSpringOnDone: (() => void) | undefined
 
 function cancelSpringAnimation() {
   if (rafId !== null) {
@@ -176,9 +200,11 @@ function cancelSpringAnimation() {
 function springAnimateTo(target: number, initialVelocity: number, onDone?: () => void) {
   cancelSpringAnimation()
   lastSpringTarget = target
+  currentSpringOnDone = onDone
 
   if (props.respectReducedMotion && reducedMotionQuery?.matches) {
     translateY.value = target
+    currentSpringOnDone = undefined
     onDone?.()
     return
   }
@@ -208,6 +234,7 @@ function springAnimateTo(target: number, initialVelocity: number, onDone?: () =>
       translateY.value = target
       isAnimating.value = false
       rafId = null
+      currentSpringOnDone = undefined
       onDone?.()
       return
     }
@@ -273,6 +300,48 @@ function unlockScroll() {
   body.style.overscrollBehaviorY = savedBodyStyles.overscrollBehaviorY ?? ''
   html.style.overscrollBehaviorY = savedHtmlOverscrollBehaviorY
   window.scrollTo(0, savedScrollY)
+}
+
+/**
+ * Locking `<body>` is enough to stop the page from scrolling ONLY if
+ * `<body>`/`window` is actually what scrolls in the consumer's app. Plenty
+ * of app shells instead wrap everything in their own `overflow-y: auto`
+ * container, in which case the `<body>` lock above is a complete no-op —
+ * `lockScrollTarget` names that real scrollable element. Unlike the
+ * `<body>` case, an ordinary element's scrollTop isn't disturbed by
+ * toggling its own `overflow`, so none of the position-save/restore
+ * dance above is needed here — `overflow: hidden` alone freezes it in
+ * place, and reverting it resumes scrolling from the same spot.
+ */
+let scrollLockTargetEl: HTMLElement | null = null
+let savedTargetOverflow = ''
+let savedTargetOverscrollBehaviorY = ''
+let isTargetScrollLocked = false
+
+function resolveScrollLockTarget(): HTMLElement | null {
+  const target = props.lockScrollTarget
+  if (!target) return null
+  return typeof target === 'string' ? document.querySelector<HTMLElement>(target) : target
+}
+
+function lockTargetScroll() {
+  if (!isClient || !props.lockBodyScroll || isTargetScrollLocked) return
+  const el = resolveScrollLockTarget()
+  if (!el) return
+  scrollLockTargetEl = el
+  isTargetScrollLocked = true
+  savedTargetOverflow = el.style.overflow
+  savedTargetOverscrollBehaviorY = el.style.overscrollBehaviorY
+  el.style.overflow = 'hidden'
+  el.style.overscrollBehaviorY = 'none'
+}
+
+function unlockTargetScroll() {
+  if (!isClient || !isTargetScrollLocked || !scrollLockTargetEl) return
+  scrollLockTargetEl.style.overflow = savedTargetOverflow
+  scrollLockTargetEl.style.overscrollBehaviorY = savedTargetOverscrollBehaviorY
+  scrollLockTargetEl = null
+  isTargetScrollLocked = false
 }
 
 /* ════════════════════════════════════════════════════════════════════ *
@@ -408,6 +477,7 @@ function openSheet() {
 
   isInDom.value = true
   lockScroll()
+  lockTargetScroll()
   applyThemeColor()
   nextTick(() => {
     currentSnapIndex.value = clampedDefaultIndex.value
@@ -456,6 +526,7 @@ watch(isOpen, (open) => {
     springAnimateTo(closedTranslate.value, lastVelocity, () => {
       isInDom.value = false
       unlockScroll()
+      unlockTargetScroll()
       restoreThemeColor()
       teardownContentResizeObserver()
       emit('closed')
@@ -766,8 +837,21 @@ function onViewportResize() {
   // A width change (e.g. rotating the screen) can reflow the content's
   // line breaks and its natural height — recompute before reading snapTranslates.
   if (usesContentFit.value) measureFitContentHeight()
-  if (isInDom.value && !isDragging.value && !isAnimating.value) {
-    translateY.value = snapTranslates.value[currentSnapIndex.value] ?? closedTranslate.value
+  if (!isInDom.value || isDragging.value) return
+
+  const target = snapTranslates.value[currentSnapIndex.value] ?? closedTranslate.value
+  if (isAnimating.value) {
+    // A resize mid-animation (e.g. iOS Safari's toolbar collapsing right
+    // as body-scroll-lock engages, or the keyboard opening) means the
+    // spring's original target was computed against a since-stale
+    // viewport height. Re-target instead of leaving it to settle at the
+    // wrong position — springAnimateTo picks up from the current position,
+    // so this reads as a course-correction, not a jump. currentSpringOnDone
+    // carries over whatever completion callback the interrupted animation
+    // had (e.g. `opened`/`snap`), so it isn't silently dropped.
+    springAnimateTo(target, 0, currentSpringOnDone)
+  } else {
+    translateY.value = target
   }
 }
 
@@ -787,7 +871,7 @@ const backdropStyle = computed(() => {
 })
 
 const sheetStyle = computed(() => ({
-  transform: `translate3d(0, ${translateY.value}px, 0)`,
+  transform: `translate3d(0, ${translateY.value - keyboardInset.value}px, 0)`,
   zIndex: props.zIndex + 1,
 }))
 
@@ -828,6 +912,11 @@ onMounted(() => {
 
   if (window.visualViewport) {
     window.visualViewport.addEventListener('resize', onViewportResize)
+    // `offsetTop` (how far the visual viewport has panned within the
+    // layout viewport) can change independently of `resize` — iOS fires
+    // `scroll` for that as it pans the page to keep a focused input above
+    // the keyboard, without necessarily also firing `resize`.
+    window.visualViewport.addEventListener('scroll', onViewportResize)
   } else {
     window.addEventListener('resize', onViewportResize)
   }
@@ -841,12 +930,14 @@ onBeforeUnmount(() => {
   teardownContentResizeObserver()
   if (window.visualViewport) {
     window.visualViewport.removeEventListener('resize', onViewportResize)
+    window.visualViewport.removeEventListener('scroll', onViewportResize)
   } else {
     window.removeEventListener('resize', onViewportResize)
   }
   document.removeEventListener('keydown', onDocumentKeydown)
   if (isOpen.value) {
     unlockScroll()
+    unlockTargetScroll()
     restoreThemeColor()
   }
 })
