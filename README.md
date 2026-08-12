@@ -137,6 +137,7 @@ If that's not enough, `panelClass` / `contentClass` / `backdropClass` accept any
 | `snapPoints` | `(number \| 'content')[]` | `[50, 100]` | Snap points as % of viewport height. `'content'` measures the actual rendered height of header+default+footer via `ResizeObserver` instead (capped at 100dvh) and re-springs live if that content changes size while open. Order doesn't matter — sorted automatically, including around a moving `'content'` point. |
 | `defaultSnapPoint` | `number` | `0` | Index into `snapPoints` the sheet opens to by default. |
 | `closeThreshold` | `number` | `0.5` | Swipe velocity threshold (px/ms) above which an inertial transition/close kicks in. |
+| `edgeFlickVelocity` | `number` | `1.8` | Swipe velocity (px/ms) above which a flick jumps straight to the edge — fully closed (or the lowest snap point, if not dismissible) on a fast downward flick, or the top-most snap point on a fast upward one — instead of moving one snap point at a time. Must exceed `closeThreshold` to matter; set to `Infinity` to disable. |
 | `rubberBandResistance` | `number` | `0.55` | Resistance (0..1) of the rubber-band effect above the top snap point. `0.55` is WebKit/UIScrollView's own constant. |
 | `springStiffness` | `number` | `300` | Spring stiffness (`k`). Higher — faster and "tighter". |
 | `springDamping` | `number` | `32` | Spring damping (`c`). Higher — less "settle" overshoot at the end. |
@@ -144,12 +145,17 @@ If that's not enough, `panelClass` / `contentClass` / `backdropClass` accept any
 | `respectReducedMotion` | `boolean` | `true` | Whether to honor `prefers-reduced-motion: reduce` (instant transitions instead of a spring). If your app opens without any visible animation and you didn't expect that, this is almost certainly why — check the OS/browser accessibility setting before assuming it's a bug. Turn off only deliberately (e.g. in a demo whose whole point is to show the animation). |
 | `showBackdrop` | `boolean` | `true` | Show the dimmed backdrop. |
 | `backdropOpacity` | `number` | `0.45` | Maximum backdrop opacity (0..1) at full openness. |
+| `fadeFromIndex` | `number` | — | Index into (sorted) `snapPoints` from which the backdrop starts to dim. Snap points below it show no backdrop at all — a "peek" state that doesn't feel modal. Unset (default) dims continuously across the whole closed→open range. |
 | `closeOnBackdropClick` | `boolean` | `true` | Close on backdrop click. |
 | `closeOnEscape` | `boolean` | `true` | Close on the `Escape` key. |
 | `dismissible` | `boolean` | `true` | If `false`, swipe/backdrop/`Escape` won't close the sheet — only programmatic close works. |
+| `grabberOnly` | `boolean` | `false` | If `true`, a drag can only be started from the grabber bar — the header slot and content area no longer initiate one (they still scroll normally). |
+| `autoFocus` | `boolean` | `true` | Whether the panel receives focus once the open animation finishes. |
 | `lockBodyScroll` | `boolean` | `true` | Lock `<body>` scroll while the sheet is open. |
 | `lockScrollTarget` | `string \| HTMLElement` | — | If your app's actual scrollable container isn't `<body>`/`window` (an app shell with its own `overflow-y: auto` wrapper, say), a CSS selector or element here gets its scroll locked too, alongside `<body>`. Governed by the same `lockBodyScroll` switch. |
 | `themeColor` | `string` | — | A CSS color applied to `<meta name="theme-color">` while the sheet is open (what mobile browsers, notably iOS Safari's toolbar, tint their UI chrome with) — restored to whatever it was before on close. The library can't sample the actual rendered color of arbitrary slot content, so this isn't automatic; pass the color your content actually is. |
+| `scaleBackground` | `boolean` | `false` | Scales down and rounds the corners of your app's background while the sheet is open — the iOS "card stack" look. Requires an element elsewhere in the DOM marked `data-vbs-background` (a sibling of where `BottomSheet` teleports to, not an ancestor); a no-op without one. See [Background scale effect](#background-scale-effect). |
+| `scaleBackgroundColor` | `string` | `'#000000'` | Color painted behind the scaled-down background, filling the gap its rounded corners reveal, while `scaleBackground` is active. |
 | `ariaLabel` | `string` | `'Panel'` | `aria-label` for the dialog. |
 | `zIndex` | `number` | `60` | Base z-index (backdrop = `zIndex`, panel = `zIndex + 1`). |
 | `panelClass` | `string \| object \| array` | — | Extra classes on the panel's root element. |
@@ -169,6 +175,23 @@ Instead of guessing a percentage, a snap point can be the literal string `'conte
 Under the hood, `header` + default slot + `footer` are measured with a `ResizeObserver` (capped at `100dvh`) and converted to a translateY exactly like a percentage point — same sort order, same rubber-band, same spring. If the content's height changes while the sheet is open (an accordion expands, an image loads), it re-springs to the new height live, without closing.
 
 `'content'` can be mixed with fixed percentages, e.g. `:snap-points="['content', 100]"` opens sized to content but still lets a fast upward flick take it to 100%. Pairing it with a point the content can never exceed (`100`) keeps sort order stable; mixing it with an *intermediate* fixed point (e.g. `['content', 50]`) is supported too, but if the measured content height crosses that point, the point order — and therefore what index a given snap position corresponds to — changes accordingly.
+
+### Background scale effect
+
+`scaleBackground` reproduces the iOS "card stack" look — your app's background scales down and its corners round off while the sheet is open. It needs an element to scale, marked with a `data-vbs-background` attribute, sitting *outside* the sheet's own subtree (it teleports to `<body>`, so wrap your app root, not the `<BottomSheet>` itself):
+
+```vue
+<template>
+  <div data-vbs-background>
+    <!-- your whole app -->
+  </div>
+  <BottomSheet v-model="isOpen" scale-background>
+    …
+  </BottomSheet>
+</template>
+```
+
+Unlike a typical implementation of this effect (a fixed-duration CSS transition fired at open/close), the scale here is driven by the exact same live `translateY` the sheet and backdrop already use, applied imperatively to that element — so it tracks drag, rubber-band, and the spring settle frame-for-frame instead of running on its own separate timing curve. If no `data-vbs-background` element exists, this is a silent no-op.
 
 ## Events (Emits)
 
@@ -270,9 +293,13 @@ At `k = 300, c = 32, m = 1` the system is slightly underdamped: critical damping
 
 Rule 1 is what lets a fast downward swipe close the sheet even if only ~10% of the height was dragged. If `dismissible === false`, closing in rules 1/3 is replaced with returning to the lowest (first) snap point instead.
 
+A flick fast enough to clear `edgeFlickVelocity` (`1.8` px/ms by default) skips rules 1/2's "one index at a time" and jumps straight to the edge instead — closed on a hard downward flick, the top-most snap point on a hard upward one — the same way a forceful swipe behaves on a native iOS sheet.
+
 ### 6. Scroll handoff
 
-The default slot's area listens for `pointerdown` and enters a `pending` state. The sheet only starts dragging if both are true: (a) `contentRef.scrollTop <= 0` — the content is already scrolled to the very top, and (b) the first movement is downward. Otherwise the gesture is handed entirely to native scrolling — this is what eliminates any "jerking." A similar but simpler rule (a 4px movement threshold instead of a `scrollTop` check) applies to the `header` slot's area, so clicks on buttons inside it aren't hijacked by the drag.
+The default slot's area listens for `pointerdown` and enters a `pending` state. The sheet only starts dragging if both are true: (a) `contentRef.scrollTop <= 0` — the content is already scrolled to the very top, and (b) the first movement is downward. Otherwise the gesture is handed entirely to native scrolling — this is what eliminates any "jerking." A similar but simpler rule (a 4px movement threshold instead of a `scrollTop` check) applies to the `header` slot's area, so clicks on buttons inside it aren't hijacked by the drag. Set `grabberOnly` to skip this heuristic entirely and only ever start a drag from the grabber bar.
+
+While a drag is in flight, a `vbs-dragging` class is toggled on `<html>` — a hook for your own CSS, e.g. suppressing hover states or pausing unrelated transitions elsewhere on the page for the duration of the gesture.
 
 ## Accessibility
 

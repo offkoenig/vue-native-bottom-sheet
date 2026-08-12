@@ -25,6 +25,11 @@ function removeFitItem() {
   if (fitItems.value.length > 1) fitItems.value.pop()
 }
 
+/* ---------- Peek, iOS-style (fadeFromIndex + scaleBackground + grabberOnly) ---------- */
+const peekOpen = ref(false)
+const peekScaleBg = ref(true)
+const peekGrabberOnly = ref(false)
+
 /* ---------- Physics playground ---------- */
 const playgroundOpen = ref(false)
 const stiffness = ref(300)
@@ -58,7 +63,7 @@ function closeProgrammatic() {
 </script>
 
 <template>
-  <div class="page">
+  <div class="page" data-vbs-background>
     <button class="lang-toggle" type="button" @click="toggleLang">
       {{ lang === 'en' ? 'RU' : 'EN' }}
     </button>
@@ -107,6 +112,20 @@ function closeProgrammatic() {
             <h3>{{ t.fitTitle }}</h3>
             <p>{{ t.fitDesc }}</p>
             <button class="btn" type="button" @click="fitOpen = true">{{ t.fitOpen }}</button>
+          </article>
+
+          <article class="card">
+            <h3>{{ t.peekTitle }}</h3>
+            <p>{{ t.peekDesc }}</p>
+            <label class="check-row">
+              <input v-model="peekScaleBg" type="checkbox" />
+              {{ t.peekScaleBg }}
+            </label>
+            <label class="check-row">
+              <input v-model="peekGrabberOnly" type="checkbox" />
+              {{ t.peekGrabberOnly }}
+            </label>
+            <button class="btn" type="button" @click="peekOpen = true">{{ t.peekOpen }}</button>
           </article>
         </div>
       </section>
@@ -266,6 +285,24 @@ function closeProgrammatic() {
           <button class="btn" type="button" @click="addFitItem">{{ t.fitAddItem }}</button>
         </div>
       </template>
+    </BottomSheet>
+
+    <BottomSheet
+      v-model="peekOpen"
+      :snap-points="[20, 90]"
+      :fade-from-index="1"
+      :scale-background="peekScaleBg"
+      :grabber-only="peekGrabberOnly"
+      :respect-reduced-motion="false"
+    >
+      <template #header="{ close }">
+        <div class="sheet-header">
+          <h2>{{ t.peekHeader }}</h2>
+          <button class="icon-btn" type="button" @click="close">✕</button>
+        </div>
+      </template>
+      <p class="sheet-text">{{ t.peekBody }}</p>
+      <div class="sheet-filler" />
     </BottomSheet>
 
     <BottomSheet
@@ -453,6 +490,19 @@ code {
   line-height: 1.5;
   margin: 0 0 18px;
   min-height: 42px;
+}
+
+.check-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--muted);
+  margin: 0 0 10px;
+  cursor: pointer;
+}
+.check-row input {
+  accent-color: var(--accent);
 }
 
 .btn {

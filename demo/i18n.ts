@@ -18,7 +18,7 @@ const messages = {
     tryIt: 'Try every example on a touch device for the full effect — mouse drag works too.',
 
     examplesKicker: 'Examples',
-    examplesTitle: 'Five ways to configure it',
+    examplesTitle: 'Six ways to configure it',
 
     basicTitle: 'Basic',
     basicDesc: 'Default snap points [50, 100]. Flick down fast enough and it closes even from a small drag.',
@@ -55,6 +55,16 @@ const messages = {
     fitRemoveItem: 'Remove row',
     fitItem: 'Row {n}',
 
+    peekTitle: 'Peek, iOS-style',
+    peekDesc:
+      'Two snap points: 20% and 90%. `fadeFromIndex="1"` means the 20% peek has no backdrop at all — only crossing into 90% dims it. `scaleBackground` shrinks and rounds the page behind it, driven by the same live translateY as the sheet.',
+    peekScaleBg: 'Scale background',
+    peekGrabberOnly: 'Drag only from the grabber',
+    peekOpen: 'Open peek sheet',
+    peekHeader: 'Peek sheet',
+    peekBody:
+      'At 20% there’s no dimmed backdrop — this doesn’t feel modal. Drag it up past the midpoint and the backdrop fades in as it crosses toward 90%. A hard flick in either direction jumps straight to the edge instead of stepping one snap at a time.',
+
     playgroundKicker: 'Playground',
     playgroundTitle: 'Feel the physics change live',
     playgroundDesc:
@@ -87,7 +97,7 @@ const messages = {
     tryIt: 'Для полного эффекта пробуйте на тач-устройстве — но и мышью тоже работает.',
 
     examplesKicker: 'Примеры',
-    examplesTitle: 'Пять вариантов настройки',
+    examplesTitle: 'Шесть вариантов настройки',
 
     basicTitle: 'Базовый',
     basicDesc: 'Точки прилипания [50, 100] по умолчанию. Быстрый свайп вниз закрывает даже при небольшом протягивании.',
@@ -123,6 +133,16 @@ const messages = {
     fitAddItem: 'Добавить строку',
     fitRemoveItem: 'Убрать строку',
     fitItem: 'Строка {n}',
+
+    peekTitle: 'Peek в стиле iOS',
+    peekDesc:
+      'Две точки: 20% и 90%. `fadeFromIndex="1"` значит, что у peek-состояния (20%) вообще нет затемнения фона — оно появляется только при переходе к 90%. `scaleBackground` уменьшает и скругляет страницу позади — завязано на тот же живой translateY, что и сама шторка.',
+    peekScaleBg: 'Масштабировать фон',
+    peekGrabberOnly: 'Тянуть только за хваталку',
+    peekOpen: 'Открыть peek-шторку',
+    peekHeader: 'Peek-шторка',
+    peekBody:
+      'На 20% нет затемнённого фона — это не ощущается как модалка. Потяните вверх за середину — при переходе к 90% фон начнёт темнеть. Резкий флик в любую сторону сразу прыгает в крайнюю точку, а не на один шаг.',
 
     playgroundKicker: 'Плейграунд',
     playgroundTitle: 'Почувствуйте физику вживую',

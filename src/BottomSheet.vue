@@ -37,6 +37,7 @@ const props = withDefaults(defineProps<BottomSheetProps>(), {
   snapPoints: () => [50, 100],
   defaultSnapPoint: 0,
   closeThreshold: 0.5,
+  edgeFlickVelocity: 1.8,
   rubberBandResistance: 0.55,
   springStiffness: 300,
   springDamping: 32,
@@ -44,10 +45,15 @@ const props = withDefaults(defineProps<BottomSheetProps>(), {
   respectReducedMotion: true,
   showBackdrop: true,
   backdropOpacity: 0.45,
+  fadeFromIndex: undefined,
   closeOnBackdropClick: true,
   closeOnEscape: true,
   dismissible: true,
+  grabberOnly: false,
+  autoFocus: true,
   lockBodyScroll: true,
+  scaleBackground: false,
+  scaleBackgroundColor: '#000000',
   ariaLabel: 'Panel',
   zIndex: 60,
   panelClass: undefined,
@@ -81,6 +87,7 @@ const footerRef = ref<HTMLElement | null>(null)
  * ════════════════════════════════════════════════════════════════════ */
 
 const viewportHeight = ref(0)
+const viewportWidth = ref(0)
 
 const usesContentFit = computed(() => (props.snapPoints ?? []).some((p) => p === 'content'))
 
@@ -163,6 +170,7 @@ function updateViewportHeight() {
     viewportHeight.value = window.innerHeight
     keyboardInset.value = 0
   }
+  viewportWidth.value = window.innerWidth
 }
 
 /* ════════════════════════════════════════════════════════════════════ *
@@ -391,6 +399,87 @@ watch(
 )
 
 /* ════════════════════════════════════════════════════════════════════ *
+ *  scaleBackground — iOS-style "card stack" scale of the app behind the
+ *  sheet, opt-in via the scaleBackground prop. Unlike vaul's version
+ *  (a fixed-duration CSS transition triggered at commit points), this is
+ *  driven by the same live translateY the sheet and backdrop already use —
+ *  a computed style, applied imperatively since the target element lives
+ *  outside this component's own template (it's addressed via a
+ *  data-attribute selector, not a ref).
+ * ════════════════════════════════════════════════════════════════════ */
+
+const SCALE_BACKGROUND_WIDTH_INSET = 26 // px "shrink" of the background at full openness — matches iOS's own card-stack proportions
+const SCALE_BACKGROUND_RADIUS = 8 // px corner radius at full openness
+const SCALE_BACKGROUND_TOP_GAP = 14 // px the background peeks down by at full openness
+
+let scaleBackgroundEl: HTMLElement | null = null
+let savedScaleBackgroundStyle: { transform: string; borderRadius: string; overflow: string; transformOrigin: string } | null = null
+let isScaleBackgroundApplied = false
+let savedBodyBackground: string | null = null
+
+function applyScaleBackground() {
+  if (!isClient || !props.scaleBackground || isScaleBackgroundApplied) return
+  const el = document.querySelector<HTMLElement>('[data-vbs-background]')
+  if (!el) return
+  scaleBackgroundEl = el
+  isScaleBackgroundApplied = true
+  savedScaleBackgroundStyle = {
+    transform: el.style.transform,
+    borderRadius: el.style.borderRadius,
+    overflow: el.style.overflow,
+    transformOrigin: el.style.transformOrigin,
+  }
+  el.style.transformOrigin = 'top'
+  savedBodyBackground = document.body.style.background
+  document.body.style.background = props.scaleBackgroundColor
+}
+
+function restoreScaleBackground() {
+  if (!isClient || !isScaleBackgroundApplied || !scaleBackgroundEl) return
+  const el = scaleBackgroundEl
+  const saved = savedScaleBackgroundStyle
+  isScaleBackgroundApplied = false
+  scaleBackgroundEl = null
+  savedScaleBackgroundStyle = null
+  if (saved) {
+    el.style.transform = saved.transform
+    el.style.borderRadius = saved.borderRadius
+    el.style.overflow = saved.overflow
+    el.style.transformOrigin = saved.transformOrigin
+  }
+  document.body.style.background = savedBodyBackground ?? ''
+  savedBodyBackground = null
+}
+
+/** 0 (closed) .. 1 (resting on the top-most snap point) — reused by both the backdrop and the background scale so they move in lockstep. */
+const openProgress = computed(() => {
+  const open = minTranslate.value
+  const closed = closedTranslate.value
+  const range = closed - open || 1
+  return 1 - Math.min(Math.max((translateY.value - open) / range, 0), 1)
+})
+
+const scaleBackgroundStyle = computed(() => {
+  if (!props.scaleBackground) return null
+  const progress = openProgress.value
+  const scaleTarget = viewportWidth.value > 0 ? (viewportWidth.value - SCALE_BACKGROUND_WIDTH_INSET) / viewportWidth.value : 1
+  const scale = 1 - (1 - scaleTarget) * progress
+  const topGap = SCALE_BACKGROUND_TOP_GAP * progress
+  return {
+    transform: `scale(${scale}) translate3d(0, calc(env(safe-area-inset-top) + ${topGap.toFixed(2)}px), 0)`,
+    borderRadius: `${(SCALE_BACKGROUND_RADIUS * progress).toFixed(2)}px`,
+    overflow: progress > 0.001 ? 'hidden' : (savedScaleBackgroundStyle?.overflow ?? ''),
+  }
+})
+
+watch(scaleBackgroundStyle, (style) => {
+  if (!isScaleBackgroundApplied || !scaleBackgroundEl || !style) return
+  scaleBackgroundEl.style.transform = style.transform
+  scaleBackgroundEl.style.borderRadius = style.borderRadius
+  scaleBackgroundEl.style.overflow = style.overflow
+})
+
+/* ════════════════════════════════════════════════════════════════════ *
  *  Auto-fitting to content height (the 'content' snap point)
  * ════════════════════════════════════════════════════════════════════ */
 
@@ -479,6 +568,7 @@ function openSheet() {
   lockScroll()
   lockTargetScroll()
   applyThemeColor()
+  applyScaleBackground()
   nextTick(() => {
     currentSnapIndex.value = clampedDefaultIndex.value
     // Measure BEFORE reading snapTranslates below — otherwise, the very
@@ -491,7 +581,7 @@ function openSheet() {
     requestAnimationFrame(() => {
       springAnimateTo(snapTranslates.value[currentSnapIndex.value], 0, () => {
         emit('opened')
-        sheetRef.value?.focus()
+        if (props.autoFocus) sheetRef.value?.focus()
       })
     })
   })
@@ -528,6 +618,7 @@ watch(isOpen, (open) => {
       unlockScroll()
       unlockTargetScroll()
       restoreThemeColor()
+      restoreScaleBackground()
       teardownContentResizeObserver()
       emit('closed')
       previouslyFocused?.focus?.()
@@ -569,6 +660,12 @@ let startY = 0
 let startTranslate = 0
 let samples: Sample[] = []
 let pendingGate: () => boolean = () => true
+
+/** A hook for consumer CSS — e.g. suppressing hover states or pausing transitions on other elements while a drag is in flight. */
+watch(isDragging, (dragging) => {
+  if (!isClient) return
+  document.documentElement.classList.toggle('vbs-dragging', dragging)
+})
 
 const INTERACTIVE_SELECTOR =
   'button, a, input, textarea, select, [role="button"], [contenteditable="true"]'
@@ -636,10 +733,12 @@ function onGrabberPointerDown(e: PointerEvent) {
 }
 /** The header slot's area — has a movement threshold, so it doesn't interfere with clicks on buttons inside it. */
 function onHeaderPointerDown(e: PointerEvent) {
+  if (props.grabberOnly) return
   beginPending(e, () => true)
 }
 /** The scrollable content area — only drags the sheet if the content is already scrolled all the way to the top. */
 function onContentPointerDown(e: PointerEvent) {
+  if (props.grabberOnly) return
   beginPending(e, () => (contentRef.value?.scrollTop ?? 0) <= 0)
 }
 
@@ -761,14 +860,18 @@ function settle(velocity: number) {
   const snaps = snapTranslates.value
   let targetIndex = currentSnapIndex.value
   let closing = false
+  // A flick fast enough to clear edgeFlickVelocity jumps straight to the
+  // edge (closed, or the top-most snap point) instead of moving one snap
+  // at a time — mirrors how a hard swipe on a native iOS sheet behaves.
+  const isEdgeFlick = Math.abs(velocity) > props.edgeFlickVelocity
 
   if (velocity > props.closeThreshold) {
-    // fast downward flick — move to the snap point below; if already at the lowest one, close
-    if (currentSnapIndex.value <= 0) closing = true
+    // fast downward flick — move to the snap point below; if already at the lowest one (or flicked hard enough), close
+    if (isEdgeFlick || currentSnapIndex.value <= 0) closing = true
     else targetIndex = currentSnapIndex.value - 1
   } else if (velocity < -props.closeThreshold) {
-    // fast upward flick — move to the snap point above
-    targetIndex = Math.min(currentSnapIndex.value + 1, snaps.length - 1)
+    // fast upward flick — move to the snap point above, or straight to the top on an edge flick
+    targetIndex = isEdgeFlick ? snaps.length - 1 : Math.min(currentSnapIndex.value + 1, snaps.length - 1)
   } else {
     // slow release — stick to whichever point is nearest (including "closed")
     const candidates = [...snaps, closedTranslate.value]
@@ -859,11 +962,22 @@ function onBackdropClick() {
   if (props.closeOnBackdropClick) requestClose()
 }
 
+/**
+ * Without fadeFromIndex, dims continuously across the whole closed→open
+ * range (openProgress). With it, opacity stays 0 below that snap point and
+ * only ramps up between it and the next one above — snap points below
+ * fadeFromIndex read as a non-modal "peek" with no backdrop at all.
+ */
 const backdropStyle = computed(() => {
-  const open = minTranslate.value
-  const closed = closedTranslate.value
-  const range = closed - open || 1
-  const progress = 1 - Math.min(Math.max((translateY.value - open) / range, 0), 1)
+  let progress = openProgress.value
+  const snaps = snapTranslates.value
+  if (props.fadeFromIndex !== undefined && snaps.length > 0) {
+    const idx = Math.min(Math.max(props.fadeFromIndex, 0), snaps.length - 1)
+    const lower = snaps[idx] // this snap point's translateY — opacity is 0 here and below
+    const upper = snaps[Math.min(idx + 1, snaps.length - 1)] // opacity reaches full here and above
+    const range = lower - upper || 1
+    progress = Math.min(Math.max((lower - translateY.value) / range, 0), 1)
+  }
   return {
     opacity: progress * props.backdropOpacity,
     zIndex: props.zIndex,
@@ -927,6 +1041,7 @@ onBeforeUnmount(() => {
   cancelSpringAnimation()
   if (dragRafId !== null) cancelAnimationFrame(dragRafId)
   detachWindowListeners()
+  document.documentElement.classList.remove('vbs-dragging')
   teardownContentResizeObserver()
   if (window.visualViewport) {
     window.visualViewport.removeEventListener('resize', onViewportResize)
@@ -939,6 +1054,7 @@ onBeforeUnmount(() => {
     unlockScroll()
     unlockTargetScroll()
     restoreThemeColor()
+    restoreScaleBackground()
   }
 })
 </script>

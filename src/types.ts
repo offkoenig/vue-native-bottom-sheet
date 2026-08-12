@@ -23,6 +23,14 @@ export interface BottomSheetProps {
   defaultSnapPoint?: number
   /** Swipe velocity threshold (px/ms) above which an inertial transition/close kicks in. */
   closeThreshold?: number
+  /**
+   * Swipe velocity (px/ms) above which a flick jumps straight to the edge —
+   * fully closed (or the lowest snap point, if not dismissible) on a fast
+   * downward flick, or the top-most snap point on a fast upward one —
+   * instead of moving just one snap point at a time. Must be greater than
+   * `closeThreshold` to have any effect. Set to `Infinity` to disable.
+   */
+  edgeFlickVelocity?: number
   /** Resistance (0..1) of the rubber-band effect above the top snap point. 0.55 is WebKit/UIScrollView's own constant. */
   rubberBandResistance?: number
   /** Spring stiffness of the settle animation. Higher — faster and "tighter". */
@@ -37,12 +45,23 @@ export interface BottomSheetProps {
   showBackdrop?: boolean
   /** Maximum backdrop opacity (0..1) at full openness. */
   backdropOpacity?: number
+  /**
+   * Index into (the sorted) `snapPoints` from which the backdrop starts to
+   * dim. Snap points below this index show no backdrop at all — useful for
+   * a "peek" state that doesn't feel modal. Undefined (default) dims
+   * continuously across the whole range, from closed to fully open.
+   */
+  fadeFromIndex?: number
   /** Close on backdrop click. */
   closeOnBackdropClick?: boolean
   /** Close on Escape. */
   closeOnEscape?: boolean
   /** If false, the sheet can't be closed via swipe/backdrop/Escape — only programmatically (v-model, the slot's close prop, or a ref). */
   dismissible?: boolean
+  /** If true, a drag gesture can only be started from the grabber bar — the header slot and content area no longer initiate a drag (they can still scroll normally). */
+  grabberOnly?: boolean
+  /** Whether the panel receives focus once the open animation finishes. */
+  autoFocus?: boolean
   /** Lock body scroll while the sheet is open (accounting for iOS Safari quirks). */
   lockBodyScroll?: boolean
   /**
@@ -68,6 +87,19 @@ export interface BottomSheetProps {
    * unless you opt in.
    */
   themeColor?: string
+  /**
+   * Scales down and rounds the corners of your app's background while the
+   * sheet is open — the "card stack" look iOS modals use. Requires an
+   * element elsewhere in the DOM (a sibling of where BottomSheet mounts,
+   * not an ancestor — it teleports to `<body>`) marked with the
+   * `data-vbs-background` attribute; that's the element that gets scaled.
+   * A no-op if no such element exists. The scale itself is driven by the
+   * same live translateY as the sheet and backdrop — not a separate CSS
+   * transition — so it tracks drag/rubber-band/spring motion exactly.
+   */
+  scaleBackground?: boolean
+  /** Color painted behind the scaled-down background (fills the gap the rounded corners reveal) while `scaleBackground` is active. */
+  scaleBackgroundColor?: string
   /** aria-label for the dialog. */
   ariaLabel?: string
   /** Base z-index (backdrop = zIndex, the panel itself = zIndex + 1). */
