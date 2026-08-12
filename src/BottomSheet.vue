@@ -572,6 +572,8 @@ function teardownContentResizeObserver() {
  * ════════════════════════════════════════════════════════════════════ */
 
 let previouslyFocused: HTMLElement | null = null
+/** True from the start of openSheet() until its spring actually kicks off — see the comment in openSheet() for why onViewportResize needs to ignore resize events during that window. */
+let isOpeningPending = false
 let lastVelocity = 0 // px/ms; needed so the closing animation carries over the flick's velocity
 
 function openSheet() {
@@ -596,6 +598,18 @@ function openSheet() {
   }
 
   isInDom.value = true
+  // lockScroll() (below) sets body's overflow to hidden, which on desktop
+  // (unlike touch/mobile, where scrollbars are typically overlay and don't
+  // reserve layout width) reclaims the vertical scrollbar's width — a
+  // genuine viewport size change, which fires a visualViewport 'resize'
+  // synchronously-ish, before springAnimateTo below has even started.
+  // onViewportResize would see isAnimating still false at that point and
+  // jump translateY straight to the target itself; by the time the real
+  // spring kicks in a moment later, displacement is already 0 and it
+  // "completes" in a single frame — the opening animation never visibly
+  // plays. isOpeningPending suppresses onViewportResize's reaction for
+  // exactly that narrow window.
+  isOpeningPending = true
   lockScroll()
   lockTargetScroll()
   applyThemeColor()
@@ -610,6 +624,7 @@ function openSheet() {
       setupContentResizeObserver()
     }
     requestAnimationFrame(() => {
+      isOpeningPending = false
       springAnimateTo(snapTranslates.value[currentSnapIndex.value], 0, () => {
         emit('opened')
         if (props.autoFocus) sheetRef.value?.focus()
@@ -971,7 +986,7 @@ function onViewportResize() {
   // A width change (e.g. rotating the screen) can reflow the content's
   // line breaks and its natural height — recompute before reading snapTranslates.
   if (usesContentFit.value) measureFitContentHeight()
-  if (!isInDom.value || isDragging.value) return
+  if (!isInDom.value || isDragging.value || isOpeningPending) return
 
   const target = snapTranslates.value[currentSnapIndex.value] ?? closedTranslate.value
   if (isAnimating.value) {
