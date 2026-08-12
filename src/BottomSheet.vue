@@ -729,7 +729,8 @@ let activePointerId: number | null = null
 let startY = 0
 let startTranslate = 0
 let samples: Sample[] = []
-let pendingGate: () => boolean = () => true
+/** Receives the raw first-movement deltaY (px; negative = upward) so each pending source can decide whether to take over by direction, not just a fixed yes/no. */
+let pendingGate: (deltaY: number) => boolean = () => true
 
 /** A hook for consumer CSS — e.g. suppressing hover states or pausing transitions on other elements while a drag is in flight. */
 watch(isDragging, (dragging) => {
@@ -772,7 +773,7 @@ function detachWindowListeners() {
   window.removeEventListener('pointercancel', onPointerUp)
 }
 
-function beginPending(e: PointerEvent, gate: () => boolean) {
+function beginPending(e: PointerEvent, gate: (deltaY: number) => boolean) {
   if (isInteractiveTarget(e.target) || isAnimating.value) return
   activePointerId = e.pointerId
   dragPhase = 'pending'
@@ -806,10 +807,21 @@ function onHeaderPointerDown(e: PointerEvent) {
   if (props.grabberOnly) return
   beginPending(e, () => true)
 }
-/** The scrollable content area — only drags the sheet if the content is already scrolled all the way to the top. */
+/**
+ * The scrollable content area. Dragging down only takes over the sheet
+ * once content is scrolled all the way to the top (otherwise it's a
+ * normal scroll-back-up). Dragging up always takes over instead of
+ * scrolling, as long as there's a more-open snap point left — matches the
+ * "drag has priority until fully expanded" behavior of Google Maps-style
+ * sheets. Once resting on the top-most snap point, further upward drags
+ * fall through to native content scroll as usual.
+ */
 function onContentPointerDown(e: PointerEvent) {
   if (props.grabberOnly) return
-  beginPending(e, () => (contentRef.value?.scrollTop ?? 0) <= 0)
+  beginPending(e, (deltaY) => {
+    if (deltaY >= 0) return (contentRef.value?.scrollTop ?? 0) <= 0
+    return currentSnapIndex.value < snapTranslates.value.length - 1
+  })
 }
 
 function cancelPending() {
@@ -876,7 +888,7 @@ function onPointerMove(e: PointerEvent) {
     const deltaY = e.clientY - startY
     const THRESHOLD = 4
     if (Math.abs(deltaY) < THRESHOLD) return
-    if (deltaY < 0 || !pendingGate()) {
+    if (!pendingGate(deltaY)) {
       cancelPending()
       return
     }

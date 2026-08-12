@@ -301,7 +301,14 @@ A flick fast enough to clear `edgeFlickVelocity` (`1.8` px/ms by default) skips 
 
 ### 6. Scroll handoff
 
-The default slot's area listens for `pointerdown` and enters a `pending` state. The sheet only starts dragging if both are true: (a) `contentRef.scrollTop <= 0` — the content is already scrolled to the very top, and (b) the first movement is downward. Otherwise the gesture is handed entirely to native scrolling — this is what eliminates any "jerking." A similar but simpler rule (a 4px movement threshold instead of a `scrollTop` check) applies to the `header` slot's area, so clicks on buttons inside it aren't hijacked by the drag. Set `grabberOnly` to skip this heuristic entirely and only ever start a drag from the grabber bar.
+The default slot's area listens for `pointerdown` and enters a `pending` state; which way the first movement goes decides who wins:
+
+- **Downward** takes over the sheet only if `contentRef.scrollTop <= 0` — content is already scrolled to the very top. Otherwise it's handed entirely to native scrolling (scrolling back up through content shouldn't drag the sheet).
+- **Upward** takes over the sheet as long as it isn't already resting on its top-most snap point — matches the "drag has priority until fully expanded" feel of Google Maps-style sheets. Once there's nowhere higher to go, further upward drags fall through to native scroll as usual.
+
+A simpler rule (just a 4px movement threshold, no directional gate) applies to the `header` slot's area, so clicks on buttons inside it aren't hijacked by the drag but dragging works both ways. Set `grabberOnly` to skip all of this and only ever start a drag from the grabber bar.
+
+One consequence worth knowing: with a long scrollable list inside a multi-snap-point sheet, an upward swipe anywhere on it expands the sheet first rather than scrolling — scrolling only takes over once you're resting on the top-most point.
 
 While a drag is in flight, a `vbs-dragging` class is toggled on `<html>` — a hook for your own CSS, e.g. suppressing hover states or pausing unrelated transitions elsewhere on the page for the duration of the gesture.
 
