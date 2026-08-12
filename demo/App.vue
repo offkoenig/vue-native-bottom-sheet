@@ -377,6 +377,11 @@ code {
   max-width: 1040px;
   margin: 0 auto;
   padding: 72px 24px 48px;
+  /* scaleBackground swaps <body>'s background while dragging past
+     fadeFromIndex — without its own opaque background, .page's transparent
+     gaps (anywhere that isn't a .card) would let that color bleed through
+     everywhere, not just around its shrunk, rounded edges. */
+  background: var(--bg);
 }
 
 .lang-toggle {
