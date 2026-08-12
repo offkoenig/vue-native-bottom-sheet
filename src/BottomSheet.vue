@@ -267,6 +267,17 @@ function lockScroll() {
   const body = document.body
   const html = document.documentElement
   savedScrollY = window.scrollY
+  // `width: 100%` below makes body span the full viewport width — on any
+  // platform with a space-reserving scrollbar (most desktop browsers),
+  // that's WIDER than body was a moment ago, since it no longer needs to
+  // leave room for the scrollbar that `overflow: hidden` just removed.
+  // Left uncompensated, the page's content visibly grows by that many
+  // pixels the instant the sheet opens (and shrinks back on close) — a
+  // page-wide jump that reads as "everything flickers." Padding the
+  // vacated width back in keeps body's actual content box the same size
+  // it was; platforms with overlay scrollbars (macOS, touch) already have
+  // innerWidth === clientWidth, so this naturally computes to 0 there.
+  const scrollbarWidth = window.innerWidth - html.clientWidth
   savedBodyStyles = {
     position: body.style.position,
     top: body.style.top,
@@ -275,6 +286,7 @@ function lockScroll() {
     width: body.style.width,
     overflow: body.style.overflow,
     overscrollBehaviorY: body.style.overscrollBehaviorY,
+    paddingRight: body.style.paddingRight,
   }
   body.style.position = 'fixed'
   body.style.top = `-${savedScrollY}px`
@@ -282,6 +294,10 @@ function lockScroll() {
   body.style.right = '0'
   body.style.width = '100%'
   body.style.overflow = 'hidden'
+  if (scrollbarWidth > 0) {
+    const currentPaddingRight = parseFloat(getComputedStyle(body).paddingRight) || 0
+    body.style.paddingRight = `${currentPaddingRight + scrollbarWidth}px`
+  }
   // `position: fixed` alone stops body's own scrollbar from moving, but
   // browsers' pull-to-refresh (Chrome/Android, PWA/WebView shells) is a
   // separate gesture recognizer keyed off overscroll-behavior-y on the
@@ -305,6 +321,7 @@ function unlockScroll() {
   body.style.right = savedBodyStyles.right ?? ''
   body.style.width = savedBodyStyles.width ?? ''
   body.style.overflow = savedBodyStyles.overflow ?? ''
+  body.style.paddingRight = savedBodyStyles.paddingRight ?? ''
   body.style.overscrollBehaviorY = savedBodyStyles.overscrollBehaviorY ?? ''
   html.style.overscrollBehaviorY = savedHtmlOverscrollBehaviorY
   window.scrollTo(0, savedScrollY)
@@ -324,6 +341,7 @@ function unlockScroll() {
 let scrollLockTargetEl: HTMLElement | null = null
 let savedTargetOverflow = ''
 let savedTargetOverscrollBehaviorY = ''
+let savedTargetPaddingRight = ''
 let isTargetScrollLocked = false
 
 function resolveScrollLockTarget(): HTMLElement | null {
@@ -340,14 +358,24 @@ function lockTargetScroll() {
   isTargetScrollLocked = true
   savedTargetOverflow = el.style.overflow
   savedTargetOverscrollBehaviorY = el.style.overscrollBehaviorY
+  savedTargetPaddingRight = el.style.paddingRight
+  // Same reasoning as lockScroll's scrollbarWidth compensation: removing
+  // this element's own scrollbar via overflow:hidden can grow its content
+  // box by however much space that scrollbar was reserving.
+  const scrollbarWidth = el.offsetWidth - el.clientWidth
   el.style.overflow = 'hidden'
   el.style.overscrollBehaviorY = 'none'
+  if (scrollbarWidth > 0) {
+    const currentPaddingRight = parseFloat(getComputedStyle(el).paddingRight) || 0
+    el.style.paddingRight = `${currentPaddingRight + scrollbarWidth}px`
+  }
 }
 
 function unlockTargetScroll() {
   if (!isClient || !isTargetScrollLocked || !scrollLockTargetEl) return
   scrollLockTargetEl.style.overflow = savedTargetOverflow
   scrollLockTargetEl.style.overscrollBehaviorY = savedTargetOverscrollBehaviorY
+  scrollLockTargetEl.style.paddingRight = savedTargetPaddingRight
   scrollLockTargetEl = null
   isTargetScrollLocked = false
 }
