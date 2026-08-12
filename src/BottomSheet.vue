@@ -146,20 +146,21 @@ const isDragging = ref(false)
 const isAnimating = ref(false)
 
 /**
- * iOS Safari's on-screen keyboard affects the VISUAL viewport in two
- * independent ways — shrinking it (`vv.height`) and panning it
- * (`vv.offsetTop`, as the page scrolls to keep the focused input visible
- * above the keyboard) — while `position: fixed` stays anchored to the
- * LAYOUT viewport, which does neither. The shrink is already handled:
- * `viewportHeight` above is read straight from `vv.height`, so every
- * snap-point/closedTranslate calculation is already expressed in "the
- * area actually visible above the keyboard" terms. `keyboardInset` only
- * needs to cover what that doesn't: the PAN, since `bottom: 0` anchors the
- * panel to the layout viewport's bottom, not to wherever the visual
- * viewport has scrolled to. It's `vv.offsetTop`, full stop — mixing the
- * shrink back in here (e.g. via `innerHeight - offsetTop - height`) would
- * double-count it on top of what `viewportHeight` already accounts for,
- * shifting the panel up by more than the keyboard's actual footprint.
+ * `position: fixed` stays anchored to the LAYOUT viewport, but iOS
+ * Safari's on-screen keyboard shrinks and pans the VISUAL viewport —
+ * `window.innerHeight` doesn't reliably shrink to match. `keyboardInset`
+ * is the resulting gap, applied as an extra upward shift in `sheetStyle`
+ * below.
+ *
+ * NOTE: an attempt to simplify this formula to plain `vv.offsetTop` (on
+ * the theory that the shrink is already covered by `viewportHeight`
+ * reading from `vv.height`) made real-device behavior measurably worse
+ * ("flies off screen" on iOS, per field report) rather than better —
+ * reverted back to this formula, which is at least a known, bounded
+ * quantity from prior releases. Neither formula has been confirmed against
+ * an actual device by anyone who touched this code; see the `## Debug`
+ * panel in the demo's Inputs card for live `visualViewport` readings if
+ * you're chasing this further.
  */
 const keyboardInset = ref(0)
 
@@ -168,7 +169,7 @@ function updateViewportHeight() {
   const vv = window.visualViewport
   if (vv) {
     viewportHeight.value = vv.height
-    keyboardInset.value = vv.offsetTop
+    keyboardInset.value = Math.max(window.innerHeight - vv.offsetTop - vv.height, 0)
   } else {
     viewportHeight.value = window.innerHeight
     keyboardInset.value = 0
@@ -232,6 +233,7 @@ function springAnimateTo(target: number, initialVelocity: number, onDone?: () =>
 
   if (props.respectReducedMotion && reducedMotionQuery?.matches) {
     translateY.value = target
+    syncStableMinTranslate()
     currentSpringOnDone = undefined
     onDone?.()
     return
@@ -256,6 +258,7 @@ function springAnimateTo(target: number, initialVelocity: number, onDone?: () =>
     velocity += acceleration * dt
     position += velocity * dt
     translateY.value = position
+    syncStableMinTranslate()
 
     const atRest = Math.abs(velocity) < 6 && Math.abs(position - target) < 0.5
     if (atRest) {
@@ -515,15 +518,24 @@ function restoreScaleBackground() {
  * needs withholding.
  */
 const stableMinTranslate = ref(minTranslate.value)
-watch(
-  [minTranslate, translateY],
-  ([mt, ty]) => {
-    if (mt >= stableMinTranslate.value || ty <= mt) {
-      stableMinTranslate.value = mt
-    }
-  },
-  { immediate: true },
-)
+/**
+ * Re-checks whether stableMinTranslate can catch up to the live
+ * minTranslate yet. Called from the two places translateY actually
+ * changes during motion — springAnimateTo's step() and the drag frame
+ * flush — plus whenever minTranslate itself changes, rather than a
+ * continuous watch(translateY, ...): a Vue watcher re-running 60-120
+ * times/sec on every single sheet, 'content' snap point involved or not,
+ * is measurable overhead on slower mobile JS engines for a check that,
+ * outside an active content-resize transition, always resolves the same
+ * way anyway.
+ */
+function syncStableMinTranslate() {
+  const mt = minTranslate.value
+  if (mt >= stableMinTranslate.value || translateY.value <= mt) {
+    stableMinTranslate.value = mt
+  }
+}
+watch(minTranslate, syncStableMinTranslate)
 
 /** 0 (closed) .. 1 (resting on the top-most snap point) — the "no fadeFromIndex" baseline both the backdrop and the background scale fall back to. */
 const openProgress = computed(() => {
@@ -779,6 +791,20 @@ let startTranslate = 0
 let samples: Sample[] = []
 /** Receives the raw first-movement deltaY (px; negative = upward) so each pending source can decide whether to take over by direction, not just a fixed yes/no. */
 let pendingGate: (deltaY: number) => boolean = () => true
+/**
+ * Whether the CURRENT drag needs onPointerMove to call e.preventDefault()
+ * every move event. The grabber and header zones already declare
+ * `touch-action: none`, which tells the browser up front to hand ALL
+ * touch handling to JS — calling preventDefault() there too is redundant
+ * work on every single move event, on a hot path where iOS Safari is
+ * already tight on budget. The content zone can't be declared that way
+ * (it needs `pan-y` for normal scrolling most of the time), so it's the
+ * one case this still needs to be conditionally cancelled in JS once our
+ * own gate has decided a drag — not a scroll — is happening.
+ */
+let dragNeedsPreventDefault = false
+/** Carries the pending gesture's preventDefault requirement into dragNeedsPreventDefault once it actually becomes a drag. */
+let pendingNeedsPreventDefault = false
 
 /** A hook for consumer CSS — e.g. suppressing hover states or pausing transitions on other elements while a drag is in flight. */
 watch(isDragging, (dragging) => {
@@ -821,11 +847,12 @@ function detachWindowListeners() {
   window.removeEventListener('pointercancel', onPointerUp)
 }
 
-function beginPending(e: PointerEvent, gate: (deltaY: number) => boolean) {
+function beginPending(e: PointerEvent, gate: (deltaY: number) => boolean, needsPreventDefault: boolean) {
   if (isInteractiveTarget(e.target)) return
   activePointerId = e.pointerId
   dragPhase = 'pending'
   pendingGate = gate
+  pendingNeedsPreventDefault = needsPreventDefault
   startY = e.clientY
   startTranslate = translateY.value
   samples = []
@@ -837,6 +864,7 @@ function beginDragging(e: PointerEvent) {
   interruptSpringForDrag()
   activePointerId = e.pointerId
   dragPhase = 'dragging'
+  dragNeedsPreventDefault = false // grabber: touch-action: none already covers it
   startY = e.clientY
   startTranslate = translateY.value
   samples = []
@@ -853,7 +881,7 @@ function onGrabberPointerDown(e: PointerEvent) {
 /** The header slot's area — has a movement threshold, so it doesn't interfere with clicks on buttons inside it. */
 function onHeaderPointerDown(e: PointerEvent) {
   if (props.grabberOnly) return
-  beginPending(e, () => true)
+  beginPending(e, () => true, false) // touch-action: none on the header zone already covers it
 }
 /**
  * The scrollable content area. Dragging down only takes over the sheet
@@ -866,10 +894,14 @@ function onHeaderPointerDown(e: PointerEvent) {
  */
 function onContentPointerDown(e: PointerEvent) {
   if (props.grabberOnly) return
-  beginPending(e, (deltaY) => {
-    if (deltaY >= 0) return (contentRef.value?.scrollTop ?? 0) <= 0
-    return currentSnapIndex.value < snapTranslates.value.length - 1
-  })
+  beginPending(
+    e,
+    (deltaY) => {
+      if (deltaY >= 0) return (contentRef.value?.scrollTop ?? 0) <= 0
+      return currentSnapIndex.value < snapTranslates.value.length - 1
+    },
+    true, // touch-action: pan-y here allows native scroll by default — only our own JS gate knows when a drag should win instead
+  )
 }
 
 function cancelPending() {
@@ -910,6 +942,7 @@ function flushDragFrame() {
   dragRafId = null
   if (latestDragClientY === null) return
   translateY.value = computeDragTranslate(latestDragClientY)
+  syncStableMinTranslate()
 }
 
 function scheduleDragFrame() {
@@ -925,6 +958,7 @@ function finalizeDragFrame() {
   }
   if (latestDragClientY !== null) {
     translateY.value = computeDragTranslate(latestDragClientY)
+    syncStableMinTranslate()
     latestDragClientY = null
   }
 }
@@ -942,6 +976,7 @@ function onPointerMove(e: PointerEvent) {
     }
     interruptSpringForDrag()
     dragPhase = 'dragging'
+    dragNeedsPreventDefault = pendingNeedsPreventDefault
     isDragging.value = true
     emit('drag-start')
     startY = e.clientY
@@ -952,7 +987,7 @@ function onPointerMove(e: PointerEvent) {
   }
 
   if (dragPhase !== 'dragging') return
-  e.preventDefault()
+  if (dragNeedsPreventDefault) e.preventDefault()
   pushSample(e.clientY)
   latestDragClientY = e.clientY
   scheduleDragFrame()
