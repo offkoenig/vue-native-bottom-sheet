@@ -451,7 +451,7 @@ function restoreScaleBackground() {
   savedBodyBackground = null
 }
 
-/** 0 (closed) .. 1 (resting on the top-most snap point) — reused by both the backdrop and the background scale so they move in lockstep. */
+/** 0 (closed) .. 1 (resting on the top-most snap point) — the "no fadeFromIndex" baseline both the backdrop and the background scale fall back to. */
 const openProgress = computed(() => {
   const open = minTranslate.value
   const closed = closedTranslate.value
@@ -459,9 +459,27 @@ const openProgress = computed(() => {
   return 1 - Math.min(Math.max((translateY.value - open) / range, 0), 1)
 })
 
+/**
+ * 0..1, shared by the backdrop and the background scale so they stay in
+ * lockstep. Without fadeFromIndex it's just openProgress; with it, stays 0
+ * below that snap point and only ramps up between it and the next one
+ * above — a "peek" state shouldn't scale/tint the background either, for
+ * the same reason it shouldn't show a backdrop.
+ */
+const dimProgress = computed(() => {
+  if (props.fadeFromIndex === undefined) return openProgress.value
+  const snaps = snapTranslates.value
+  if (snaps.length === 0) return openProgress.value
+  const idx = Math.min(Math.max(props.fadeFromIndex, 0), snaps.length - 1)
+  const lower = snaps[idx] // this snap point's translateY — progress is 0 here and below
+  const upper = snaps[Math.min(idx + 1, snaps.length - 1)] // progress reaches 1 here and above
+  const range = lower - upper || 1
+  return Math.min(Math.max((lower - translateY.value) / range, 0), 1)
+})
+
 const scaleBackgroundStyle = computed(() => {
   if (!props.scaleBackground) return null
-  const progress = openProgress.value
+  const progress = dimProgress.value
   const scaleTarget = viewportWidth.value > 0 ? (viewportWidth.value - SCALE_BACKGROUND_WIDTH_INSET) / viewportWidth.value : 1
   const scale = 1 - (1 - scaleTarget) * progress
   const topGap = SCALE_BACKGROUND_TOP_GAP * progress
@@ -962,27 +980,10 @@ function onBackdropClick() {
   if (props.closeOnBackdropClick) requestClose()
 }
 
-/**
- * Without fadeFromIndex, dims continuously across the whole closed→open
- * range (openProgress). With it, opacity stays 0 below that snap point and
- * only ramps up between it and the next one above — snap points below
- * fadeFromIndex read as a non-modal "peek" with no backdrop at all.
- */
-const backdropStyle = computed(() => {
-  let progress = openProgress.value
-  const snaps = snapTranslates.value
-  if (props.fadeFromIndex !== undefined && snaps.length > 0) {
-    const idx = Math.min(Math.max(props.fadeFromIndex, 0), snaps.length - 1)
-    const lower = snaps[idx] // this snap point's translateY — opacity is 0 here and below
-    const upper = snaps[Math.min(idx + 1, snaps.length - 1)] // opacity reaches full here and above
-    const range = lower - upper || 1
-    progress = Math.min(Math.max((lower - translateY.value) / range, 0), 1)
-  }
-  return {
-    opacity: progress * props.backdropOpacity,
-    zIndex: props.zIndex,
-  }
-})
+const backdropStyle = computed(() => ({
+  opacity: dimProgress.value * props.backdropOpacity,
+  zIndex: props.zIndex,
+}))
 
 const sheetStyle = computed(() => ({
   transform: `translate3d(0, ${translateY.value - keyboardInset.value}px, 0)`,

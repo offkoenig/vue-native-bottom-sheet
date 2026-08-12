@@ -195,6 +195,8 @@ Under the hood, `header` + default slot + `footer` are measured with a `ResizeOb
 
 Unlike a typical implementation of this effect (a fixed-duration CSS transition fired at open/close), the scale here is driven by the exact same live `translateY` the sheet and backdrop already use, applied imperatively to that element — so it tracks drag, rubber-band, and the spring settle frame-for-frame instead of running on its own separate timing curve. If no `data-vbs-background` element exists, this is a silent no-op.
 
+If `fadeFromIndex` is also set, the background scale shares its progress with the backdrop — it stays untouched below that snap point and only starts scaling/tinting once you cross into it, so a "peek" state doesn't visually change the background any more than it dims it.
+
 ## Events (Emits)
 
 | Event | Payload | When |
