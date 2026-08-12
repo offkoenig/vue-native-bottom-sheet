@@ -82,7 +82,7 @@ const messages = {
 
     inputsTitle: 'Inputs & keyboard',
     inputsDesc:
-      'A real `<input>` and `<textarea>` inside the sheet — on iOS Safari, focusing one opens the keyboard and the sheet repositions itself above it via visualViewport, without a gap underneath.',
+      'A real `<input>` and `<textarea>` inside the sheet — on iOS Safari, focusing one opens the keyboard and the sheet repositions itself above it via visualViewport, without a gap underneath. `auto-focus="input"` also focuses the name field the instant it opens, keyboard included.',
     inputsOpen: 'Open sheet',
     inputsHeader: 'Send feedback',
     inputsNameLabel: 'Name',
@@ -192,7 +192,7 @@ const messages = {
 
     inputsTitle: 'Поля ввода и клавиатура',
     inputsDesc:
-      'Настоящие `<input>` и `<textarea>` внутри шторки — в iOS Safari фокус на поле открывает клавиатуру, и шторка сама переставляется над ней через visualViewport, без дыры снизу.',
+      'Настоящие `<input>` и `<textarea>` внутри шторки — в iOS Safari фокус на поле открывает клавиатуру, и шторка сама переставляется над ней через visualViewport, без дыры снизу. `auto-focus="input"` сразу же ставит фокус на поле имени при открытии — вместе с клавиатурой.',
     inputsOpen: 'Открыть шторку',
     inputsHeader: 'Обратная связь',
     inputsNameLabel: 'Имя',

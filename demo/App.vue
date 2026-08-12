@@ -393,7 +393,7 @@ function closeProgrammatic() {
       </template>
     </BottomSheet>
 
-    <BottomSheet v-model="inputsOpen" :snap-points="[55, 90]" :respect-reduced-motion="false">
+    <BottomSheet v-model="inputsOpen" :snap-points="[55, 90]" auto-focus="input" :respect-reduced-motion="false">
       <template #header="{ close }">
         <div class="sheet-header">
           <h2>{{ t.inputsHeader }}</h2>
