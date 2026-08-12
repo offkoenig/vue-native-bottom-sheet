@@ -152,15 +152,14 @@ const isAnimating = ref(false)
  * is the resulting gap, applied as an extra upward shift in `sheetStyle`
  * below.
  *
- * NOTE: an attempt to simplify this formula to plain `vv.offsetTop` (on
- * the theory that the shrink is already covered by `viewportHeight`
- * reading from `vv.height`) made real-device behavior measurably worse
- * ("flies off screen" on iOS, per field report) rather than better —
- * reverted back to this formula, which is at least a known, bounded
- * quantity from prior releases. Neither formula has been confirmed against
- * an actual device by anyone who touched this code; see the `## Debug`
- * panel in the demo's Inputs card for live `visualViewport` readings if
- * you're chasing this further.
+ * Deliberately NOT clamped to >= 0. Field-measured real numbers (iPhone,
+ * keyboard open): innerHeight 471, vv.height 377, vv.offsetTop 243 — the
+ * raw formula comes out to 471 − 243 − 377 = **−149**. Clamping that to 0
+ * (an earlier version of this code did) discards a real, negative
+ * correction and leaves the sheet over-lifted by that many px; letting it
+ * go negative subtracts a negative, i.e. nudges the panel back down by
+ * exactly the overshoot. The `## Debug` panel in the demo's Inputs card
+ * shows live numbers if this needs further tuning against real hardware.
  */
 const keyboardInset = ref(0)
 
@@ -169,7 +168,7 @@ function updateViewportHeight() {
   const vv = window.visualViewport
   if (vv) {
     viewportHeight.value = vv.height
-    keyboardInset.value = Math.max(window.innerHeight - vv.offsetTop - vv.height, 0)
+    keyboardInset.value = window.innerHeight - vv.offsetTop - vv.height
   } else {
     viewportHeight.value = window.innerHeight
     keyboardInset.value = 0

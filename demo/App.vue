@@ -56,7 +56,7 @@ function updateDebugViewport() {
     innerH: window.innerHeight,
     vvH: vv ? Math.round(vv.height) : window.innerHeight,
     vvOffsetTop: vv ? Math.round(vv.offsetTop) : 0,
-    keyboardInset: vv ? Math.max(Math.round(window.innerHeight - vv.offsetTop - vv.height), 0) : 0,
+    keyboardInset: vv ? Math.round(window.innerHeight - vv.offsetTop - vv.height) : 0,
   }
 }
 onMounted(() => {
