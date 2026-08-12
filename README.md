@@ -6,6 +6,8 @@ A production-ready bottom sheet for Vue 3, built with physics that feels as clos
 
 Works as a regular component library in **any** Vue 3 (≥3.4) project — Vite, webpack/vue-loader — and as a full **Nuxt 3 module** with auto-import. Doesn't require Tailwind: all styling is self-contained (scoped CSS + CSS custom properties for theming).
 
+**[Live demo →](https://offkoenig.github.io/vue-native-bottom-sheet/)**
+
 ## Features
 
 - **v-model** via `defineModel()`.
@@ -326,6 +328,8 @@ src/
 The file is deliberately not pre-compiled to JS: it's resolved and compiled by whatever Vite/webpack pipeline the consumer already has, exactly as if it lived directly in their own `components/` folder. `index.ts`/`nuxt.ts` (plain `.ts` modules, no Vue syntax) are built to JS separately.
 
 ## Demo
+
+**[Try it live](https://offkoenig.github.io/vue-native-bottom-sheet/)** — hosted on GitHub Pages, built from the same `demo/` app below.
 
 A live demo lives in `demo/` — it imports the component straight from `src/`, so it always reflects the current code, not the published version.
 
