@@ -287,6 +287,8 @@ where `k` = `springStiffness`, `c` = `springDamping`, `m` = `springMass`. The an
 
 The key detail: **the spring's initial velocity in this equation is the measured swipe velocity**. That's why a fast flick reaches its target quickly with a barely-there characteristic settle, while a slow release glides gently into place — with no separate "animation duration from velocity" calculation needed. The shape of the motion isn't a pre-drawn easing curve; it comes from a real initial velocity fed into the equation.
 
+The spring is also **interruptible**: grabbing the sheet while it's still animating open, closed, or toward a snap point picks the drag up from wherever `translateY` currently is, mid-flight — there's no "wait for it to finish first." A real physical object doesn't refuse to be touched while it's still moving, and neither does this.
+
 At `k = 300, c = 32, m = 1` the system is slightly underdamped: critical damping is `2√(k·m) ≈ 34.6`, and `32` sits just below that. Hence the barely-perceptible settle at the end — the detail that reads as "native" rather than a linear or abrupt stop.
 
 ### 5. Deciding where to settle on release

@@ -201,6 +201,23 @@ function cancelSpringAnimation() {
 }
 
 /**
+ * Called the instant a gesture actually becomes a drag (not just
+ * "pending"). A real spring is interruptible mid-flight — grabbing the
+ * sheet while it's still animating open/closed/toward a snap point should
+ * pick it up from wherever it currently is, same as flicking a real
+ * physical object, rather than making the user wait for the animation to
+ * finish first. cancelSpringAnimation() alone only stops the rAF loop; it
+ * doesn't clear isAnimating or the interrupted animation's onDone (e.g.
+ * `opened`/`snap`), which would otherwise never fire.
+ */
+function interruptSpringForDrag() {
+  if (rafId === null && !isAnimating.value) return
+  cancelSpringAnimation()
+  isAnimating.value = false
+  currentSpringOnDone = undefined
+}
+
+/**
  * Animates translateY.value toward target, starting from the current
  * position and a given initial velocity (usually the measured swipe
  * velocity, in px/ms).
@@ -802,7 +819,7 @@ function detachWindowListeners() {
 }
 
 function beginPending(e: PointerEvent, gate: (deltaY: number) => boolean) {
-  if (isInteractiveTarget(e.target) || isAnimating.value) return
+  if (isInteractiveTarget(e.target)) return
   activePointerId = e.pointerId
   dragPhase = 'pending'
   pendingGate = gate
@@ -814,7 +831,7 @@ function beginPending(e: PointerEvent, gate: (deltaY: number) => boolean) {
 }
 
 function beginDragging(e: PointerEvent) {
-  if (isAnimating.value) return
+  interruptSpringForDrag()
   activePointerId = e.pointerId
   dragPhase = 'dragging'
   startY = e.clientY
@@ -920,6 +937,7 @@ function onPointerMove(e: PointerEvent) {
       cancelPending()
       return
     }
+    interruptSpringForDrag()
     dragPhase = 'dragging'
     isDragging.value = true
     emit('drag-start')
