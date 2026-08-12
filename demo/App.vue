@@ -930,7 +930,10 @@ input[type='range']::-moz-range-thumb {
   color: var(--ink);
   border-radius: 10px;
   padding: 10px 12px;
-  font-size: 15px;
+  /* iOS Safari auto-zooms the page on focus for any input/textarea with a
+     computed font-size under 16px — this is the threshold, not a rounder
+     number. */
+  font-size: 16px;
   font-family: inherit;
   outline: none;
 }
