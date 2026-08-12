@@ -416,6 +416,8 @@ let scaleBackgroundEl: HTMLElement | null = null
 let savedScaleBackgroundStyle: { transform: string; borderRadius: string; overflow: string; transformOrigin: string } | null = null
 let isScaleBackgroundApplied = false
 let savedBodyBackground: string | null = null
+/** Tracks whether body's background is currently swapped to scaleBackgroundColor, so the reactive watcher below only writes to it on an actual on/off transition — not on every frame the scale animates through. */
+let isBodyBackgroundOn = false
 
 function applyScaleBackground() {
   if (!isClient || !props.scaleBackground || isScaleBackgroundApplied) return
@@ -431,7 +433,6 @@ function applyScaleBackground() {
   }
   el.style.transformOrigin = 'top'
   savedBodyBackground = document.body.style.background
-  document.body.style.background = props.scaleBackgroundColor
 }
 
 function restoreScaleBackground() {
@@ -449,6 +450,7 @@ function restoreScaleBackground() {
   }
   document.body.style.background = savedBodyBackground ?? ''
   savedBodyBackground = null
+  isBodyBackgroundOn = false
 }
 
 /** 0 (closed) .. 1 (resting on the top-most snap point) — the "no fadeFromIndex" baseline both the backdrop and the background scale fall back to. */
@@ -461,18 +463,20 @@ const openProgress = computed(() => {
 
 /**
  * 0..1, shared by the backdrop and the background scale so they stay in
- * lockstep. Without fadeFromIndex it's just openProgress; with it, stays 0
- * below that snap point and only ramps up between it and the next one
- * above — a "peek" state shouldn't scale/tint the background either, for
- * the same reason it shouldn't show a backdrop.
+ * lockstep. Without fadeFromIndex it's just openProgress; with it, ramps
+ * from 0 at the snap point just *before* fadeFromIndex (or fully closed,
+ * if fadeFromIndex is 0) up to 1 exactly at fadeFromIndex itself, and
+ * stays 1 for anything more open than that — resting ON fadeFromIndex
+ * must read as "fully shown," not as the far edge of a range that's never
+ * actually reached in normal use.
  */
 const dimProgress = computed(() => {
   if (props.fadeFromIndex === undefined) return openProgress.value
   const snaps = snapTranslates.value
   if (snaps.length === 0) return openProgress.value
   const idx = Math.min(Math.max(props.fadeFromIndex, 0), snaps.length - 1)
-  const lower = snaps[idx] // this snap point's translateY — progress is 0 here and below
-  const upper = snaps[Math.min(idx + 1, snaps.length - 1)] // progress reaches 1 here and above
+  const upper = snaps[idx] // fadeFromIndex's own translateY — progress reaches 1 here (and anything more open)
+  const lower = idx > 0 ? snaps[idx - 1] : closedTranslate.value // the point just before it (or fully closed) — progress is 0 here (and anything less open)
   const range = lower - upper || 1
   return Math.min(Math.max((lower - translateY.value) / range, 0), 1)
 })
@@ -495,6 +499,15 @@ watch(scaleBackgroundStyle, (style) => {
   scaleBackgroundEl.style.transform = style.transform
   scaleBackgroundEl.style.borderRadius = style.borderRadius
   scaleBackgroundEl.style.overflow = style.overflow
+  // Only the actual on/off transition writes to body — not every frame the
+  // scale animates through — and only once there's a real gap for it to
+  // fill (progress > 0), so a "peek" position (dimProgress still 0) never
+  // touches body's background at all.
+  const shouldShowBodyBackground = style.overflow === 'hidden'
+  if (shouldShowBodyBackground !== isBodyBackgroundOn) {
+    isBodyBackgroundOn = shouldShowBodyBackground
+    document.body.style.background = shouldShowBodyBackground ? props.scaleBackgroundColor : (savedBodyBackground ?? '')
+  }
 })
 
 /* ════════════════════════════════════════════════════════════════════ *
