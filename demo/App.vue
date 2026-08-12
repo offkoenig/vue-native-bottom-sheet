@@ -266,7 +266,7 @@ function closeProgrammatic() {
       <p class="sheet-text">{{ t.themeBody }}</p>
     </BottomSheet>
 
-    <BottomSheet v-model="fitOpen" :snap-points="['content']">
+    <BottomSheet v-model="fitOpen" :snap-points="['content']" :respect-reduced-motion="false">
       <template #header="{ close }">
         <div class="sheet-header">
           <h2>{{ t.fitHeader }}</h2>
