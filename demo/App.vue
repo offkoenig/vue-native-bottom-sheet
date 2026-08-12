@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import BottomSheet from '../src/BottomSheet.vue'
 import { t, lang, toggleLang } from './i18n'
 
@@ -8,6 +8,14 @@ const basicOpen = ref(false)
 
 /* ---------- Multiple snap points ---------- */
 const multiOpen = ref(false)
+const queueTracks = [
+  { title: 'Midnight City', artist: 'M83', duration: '4:03', grad: 'grad-2', emoji: '🌙' },
+  { title: 'Sunset Lover', artist: 'Petit Biscuit', duration: '3:48', grad: 'grad-5', emoji: '🌅' },
+  { title: 'Redbone', artist: 'Childish Gambino', duration: '5:27', grad: 'grad-1', emoji: '🎸' },
+  { title: 'Breathe', artist: 'Télépopmusik', duration: '4:35', grad: 'grad-4', emoji: '🌊' },
+  { title: 'Nightcall', artist: 'Kavinsky', duration: '4:18', grad: 'grad-6', emoji: '🚗' },
+  { title: 'Electric Feel', artist: 'MGMT', duration: '3:49', grad: 'grad-3', emoji: '⚡' },
+]
 
 /* ---------- Non-dismissible ---------- */
 const nonDismissibleOpen = ref(false)
@@ -48,6 +56,11 @@ const programmaticOpen = ref(false)
 const programmaticDefaultIndex = ref(0)
 const programmaticSheet = ref<InstanceType<typeof BottomSheet> | null>(null)
 const programmaticSnaps = [25, 60, 100]
+const programmaticStops = computed(() => [
+  { percent: 25, label: t.value.programmaticStop25, grad: 'grad-5', icon: '👀' },
+  { percent: 60, label: t.value.programmaticStop60, grad: 'grad-2', icon: '📋' },
+  { percent: 100, label: t.value.programmaticStop100, grad: 'grad-3', icon: '🖥️' },
+])
 
 function goToSnap(index: number) {
   if (programmaticOpen.value) {
@@ -215,8 +228,20 @@ function closeProgrammatic() {
           <button class="icon-btn" type="button" @click="close">✕</button>
         </div>
       </template>
+      <div class="sheet-avatar-row">
+        <div class="sheet-avatar grad-1">AK</div>
+        <div class="sheet-avatar-info">
+          <h3>{{ t.basicName }}</h3>
+          <p>{{ t.basicRole }}</p>
+        </div>
+      </div>
+      <div class="sheet-stats">
+        <div class="sheet-stat"><b>24</b><span>{{ t.basicStatProjects }}</span></div>
+        <div class="sheet-stat"><b>1.2k</b><span>{{ t.basicStatFollowers }}</span></div>
+        <div class="sheet-stat"><b>4.9</b><span>{{ t.basicStatRating }}</span></div>
+      </div>
+      <p class="sheet-text">{{ t.basicBio }}</p>
       <p class="sheet-text">{{ t.basicBody }}</p>
-      <div class="sheet-filler" />
     </BottomSheet>
 
     <BottomSheet v-model="multiOpen" :snap-points="[25, 60, 100]" :respect-reduced-motion="false">
@@ -228,7 +253,16 @@ function closeProgrammatic() {
       </template>
       <template #default="{ }">
         <p class="sheet-text">{{ t.multiBody.replace('{n}', '…') }}</p>
-        <div class="sheet-filler" />
+        <ul class="sheet-list">
+          <li v-for="track in queueTracks" :key="track.title">
+            <span class="sheet-list-thumb" :class="track.grad">{{ track.emoji }}</span>
+            <div class="sheet-list-body">
+              <h4>{{ track.title }}</h4>
+              <p>{{ track.artist }}</p>
+            </div>
+            <span class="sheet-list-trail">{{ track.duration }}</span>
+          </li>
+        </ul>
       </template>
     </BottomSheet>
 
@@ -290,6 +324,7 @@ function closeProgrammatic() {
     <BottomSheet
       v-model="peekOpen"
       :snap-points="[20, 90]"
+      :default-snap-point="1"
       :fade-from-index="1"
       :scale-background="peekScaleBg"
       :grabber-only="peekGrabberOnly"
@@ -301,8 +336,22 @@ function closeProgrammatic() {
           <button class="icon-btn" type="button" @click="close">✕</button>
         </div>
       </template>
+      <div class="sheet-media"><span class="sheet-media-icon">☕</span></div>
+      <h3 class="sheet-place-name">{{ t.peekPlaceName }}</h3>
+      <div class="sheet-meta-row">
+        <span class="stars">★★★★★</span>
+        <span>{{ t.peekRating }}</span>
+        <span>· {{ t.peekReviews }}</span>
+        <span class="sheet-chip">{{ t.peekOpenStatus }}</span>
+      </div>
+      <p class="sheet-text">{{ t.peekCategory }}</p>
       <p class="sheet-text">{{ t.peekBody }}</p>
-      <div class="sheet-filler" />
+      <template #footer="{ close }">
+        <div class="sheet-actions-row">
+          <button class="btn btn-ghost" type="button" @click="close">{{ t.peekDirections }}</button>
+          <button class="btn" type="button" @click="close">{{ t.peekCall }}</button>
+        </div>
+      </template>
     </BottomSheet>
 
     <BottomSheet
@@ -321,7 +370,7 @@ function closeProgrammatic() {
         </div>
       </template>
       <p class="sheet-text">{{ t.playgroundBody }}</p>
-      <div class="sheet-filler" />
+      <p class="sheet-text">{{ t.playgroundBody2 }}</p>
     </BottomSheet>
 
     <BottomSheet
@@ -338,7 +387,15 @@ function closeProgrammatic() {
         </div>
       </template>
       <p class="sheet-text">{{ t.programmaticBody }}</p>
-      <div class="sheet-filler" />
+      <ul class="sheet-list">
+        <li v-for="stop in programmaticStops" :key="stop.percent">
+          <span class="sheet-list-thumb" :class="stop.grad">{{ stop.icon }}</span>
+          <div class="sheet-list-body">
+            <h4>{{ stop.percent }}%</h4>
+            <p>{{ stop.label }}</p>
+          </div>
+        </li>
+      </ul>
     </BottomSheet>
   </div>
 </template>
@@ -639,15 +696,201 @@ input[type='range']::-moz-range-thumb {
   font-size: 15px;
   line-height: 1.6;
   margin: 4px 0 20px;
+  padding: 0 20px;
 }
-.sheet-filler {
-  height: 60vh;
+
+/* ---- richer sheet content: media hero, meta row, avatar, stats, list ---- */
+.sheet-media {
+  height: 168px;
+  margin: 0 20px 16px;
+  border-radius: 16px;
+  background: linear-gradient(135deg, #7c76f5 0%, #5b4ee5 55%, #3d2fcf 100%);
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  align-items: flex-end;
+  padding: 14px;
+}
+.sheet-media::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at 78% 22%, rgba(255, 255, 255, 0.35), transparent 55%);
+}
+.sheet-media-icon {
+  position: relative;
+  font-size: 34px;
+  filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.25));
+}
+
+.sheet-place-name {
+  margin: 0 0 6px;
+  padding: 0 20px;
+  font-size: 19px;
+}
+
+.sheet-meta-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 0 20px;
+  margin: 0 0 14px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.sheet-meta-row .stars {
+  color: #f5a623;
+  letter-spacing: 1px;
+}
+.sheet-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  font-size: 12px;
+}
+
+.sheet-actions-row {
+  display: flex;
+  gap: 12px;
+}
+.sheet-actions-row .btn {
+  flex: 1;
+}
+
+.sheet-avatar-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 0 20px;
+  margin: 4px 0 16px;
+}
+.sheet-avatar {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-weight: 700;
+  font-size: 17px;
+  background: linear-gradient(135deg, #ff9a5a, #ff5f6d);
+}
+.sheet-avatar-info h3 {
+  margin: 0 0 2px;
+  font-size: 16px;
+}
+.sheet-avatar-info p {
+  margin: 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.sheet-stats {
+  display: flex;
+  gap: 10px;
+  padding: 0 20px;
+  margin: 0 0 4px;
+}
+.sheet-stat {
+  flex: 1;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 10px 8px;
+  text-align: center;
+}
+.sheet-stat b {
+  display: block;
+  font-size: 16px;
+}
+.sheet-stat span {
+  font-size: 10.5px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.sheet-list {
+  list-style: none;
+  margin: 0;
+  padding: 0 20px 4px;
+  display: grid;
+  gap: 10px;
+}
+.sheet-list li {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg);
+}
+.sheet-list-thumb {
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+}
+.sheet-list-body {
+  flex: 1;
+  min-width: 0;
+}
+.sheet-list-body h4 {
+  margin: 0 0 2px;
+  font-size: 14px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sheet-list-body p {
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sheet-list-trail {
+  font-size: 13px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+
+.grad-1 {
+  background: linear-gradient(135deg, #ff9a5a, #ff5f6d);
+}
+.grad-2 {
+  background: linear-gradient(135deg, #5b4ee5, #7c76f5);
+}
+.grad-3 {
+  background: linear-gradient(135deg, #22c55e, #16a34a);
+}
+.grad-4 {
+  background: linear-gradient(135deg, #06b6d4, #0891b2);
+}
+.grad-5 {
+  background: linear-gradient(135deg, #f59e0b, #d97706);
+}
+.grad-6 {
+  background: linear-gradient(135deg, #ec4899, #db2777);
 }
 
 .fit-list {
   list-style: none;
   margin: 0 0 4px;
-  padding: 0;
+  padding: 0 20px;
   display: grid;
   gap: 8px;
 }

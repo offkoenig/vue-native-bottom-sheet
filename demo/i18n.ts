@@ -24,6 +24,13 @@ const messages = {
     basicDesc: 'Default snap points [50, 100]. Flick down fast enough and it closes even from a small drag.',
     basicOpen: 'Open sheet',
     basicHeader: 'Basic sheet',
+    basicName: 'Alex Kim',
+    basicRole: 'Product Designer · Berlin',
+    basicBio:
+      'Ten years turning fuzzy briefs into shipped interfaces. Currently obsessed with physically-based motion — like the spring under this very sheet.',
+    basicStatProjects: 'Projects',
+    basicStatFollowers: 'Followers',
+    basicStatRating: 'Rating',
     basicBody:
       'Drag the handle, or scroll this content — once you\u2019re at the top, pulling down again drags the sheet instead. Try a quick downward flick.',
 
@@ -31,7 +38,8 @@ const messages = {
     multiDesc: 'Three stops: 25%, 60%, 100%. A slow release always settles on the nearest one.',
     multiOpen: 'Open sheet',
     multiHeader: 'Snap point {n}',
-    multiBody: 'Currently resting near snap index {n}. Drag up or down to move between stops.',
+    multiBody:
+      'Currently resting near snap index {n}. Drag up or down to move between stops — the queue below scrolls once you’re at 60% or 100%.',
 
     nonDismissibleTitle: 'Non-dismissible',
     nonDismissibleDesc: 'Backdrop click, Escape, and dragging past the lowest point all do nothing — only the button closes it.',
@@ -57,13 +65,20 @@ const messages = {
 
     peekTitle: 'Peek, iOS-style',
     peekDesc:
-      'Two snap points: 20% and 90%. `fadeFromIndex="1"` means the 20% peek has no backdrop at all — only crossing into 90% dims it. `scaleBackground` shrinks and rounds the page behind it, driven by the same live translateY as the sheet.',
+      'Two snap points: 20% and 90%, opens straight to 90%. `fadeFromIndex="1"` means dragging down to the 20% peek strips the backdrop entirely. `scaleBackground` shrinks and rounds the page behind it, driven by the same live translateY as the sheet.',
     peekScaleBg: 'Scale background',
     peekGrabberOnly: 'Drag only from the grabber',
     peekOpen: 'Open peek sheet',
-    peekHeader: 'Peek sheet',
+    peekHeader: 'Nearby',
+    peekPlaceName: 'Sunday Coffee Roasters',
+    peekCategory: 'Cafe · Third-wave coffee',
+    peekRating: '4.8',
+    peekReviews: '512 reviews',
+    peekOpenStatus: 'Open until 22:00',
+    peekDirections: 'Directions',
+    peekCall: 'Call',
     peekBody:
-      'At 20% there’s no dimmed backdrop — this doesn’t feel modal. Drag it up past the midpoint and the backdrop fades in as it crosses toward 90%. A hard flick in either direction jumps straight to the edge instead of stepping one snap at a time.',
+      'This opens straight to 90%, where the backdrop and scaled background are both fully visible. Drag it down toward the 20% peek and both fade out completely — no dimmed backdrop, no scaled background. A hard flick in either direction jumps straight to the edge instead of stepping one snap at a time.',
 
     playgroundKicker: 'Playground',
     playgroundTitle: 'Feel the physics change live',
@@ -76,6 +91,8 @@ const messages = {
     playgroundOpen: 'Open playground sheet',
     playgroundHeader: 'Physics playground',
     playgroundBody: 'This sheet uses whatever values the sliders on the page currently have. Close it, tweak, reopen.',
+    playgroundBody2:
+      'Under the hood it’s a damped harmonic oscillator, integrated once per frame with semi-implicit Euler — the same equation a real spring follows, not a pre-drawn easing curve. Your swipe’s velocity becomes its initial velocity.',
     resetDefaults: 'Reset to defaults',
 
     programmaticKicker: 'Programmatic control',
@@ -85,6 +102,9 @@ const messages = {
     closeIt: 'Close',
     programmaticHeader: 'Remote controlled',
     programmaticBody: 'Opened and resized entirely from buttons outside the sheet.',
+    programmaticStop25: 'Peek',
+    programmaticStop60: 'Details',
+    programmaticStop100: 'Full screen',
 
     footerNote: 'Full source, README, and physics write-up ship in the package.',
   },
@@ -103,6 +123,13 @@ const messages = {
     basicDesc: 'Точки прилипания [50, 100] по умолчанию. Быстрый свайп вниз закрывает даже при небольшом протягивании.',
     basicOpen: 'Открыть шторку',
     basicHeader: 'Базовая шторка',
+    basicName: 'Алекс Ким',
+    basicRole: 'Продуктовый дизайнер · Берлин',
+    basicBio:
+      'Десять лет превращаю расплывчатые ТЗ в готовые интерфейсы. Сейчас увлечён физически достоверным движением — вроде той пружины, что под этой самой шторкой.',
+    basicStatProjects: 'Проектов',
+    basicStatFollowers: 'Подписчиков',
+    basicStatRating: 'Рейтинг',
     basicBody:
       'Потяните за хваталку или скролльте контент — когда докрутите до верха, повторное перетягивание вниз потащит уже саму шторку. Попробуйте быстрый свайп вниз.',
 
@@ -110,7 +137,8 @@ const messages = {
     multiDesc: 'Три остановки: 25%, 60%, 100%. Медленный релиз всегда прилипает к ближайшей.',
     multiOpen: 'Открыть шторку',
     multiHeader: 'Точка {n}',
-    multiBody: 'Сейчас примерно на точке с индексом {n}. Тяните вверх или вниз, чтобы переключаться.',
+    multiBody:
+      'Сейчас примерно на точке с индексом {n}. Тяните вверх или вниз, чтобы переключаться — очередь ниже скроллится на 60% и 100%.',
 
     nonDismissibleTitle: 'Без закрытия жестом',
     nonDismissibleDesc: 'Клик по фону, Escape и свайп ниже нижней точки не действуют — закрывает только кнопка.',
@@ -136,13 +164,20 @@ const messages = {
 
     peekTitle: 'Peek в стиле iOS',
     peekDesc:
-      'Две точки: 20% и 90%. `fadeFromIndex="1"` значит, что у peek-состояния (20%) вообще нет затемнения фона — оно появляется только при переходе к 90%. `scaleBackground` уменьшает и скругляет страницу позади — завязано на тот же живой translateY, что и сама шторка.',
+      'Две точки: 20% и 90%, открывается сразу на 90%. `fadeFromIndex="1"` значит, что при перетягивании вниз к 20% затемнение фона исчезает полностью. `scaleBackground` уменьшает и скругляет страницу позади — завязано на тот же живой translateY, что и сама шторка.',
     peekScaleBg: 'Масштабировать фон',
     peekGrabberOnly: 'Тянуть только за хваталку',
     peekOpen: 'Открыть peek-шторку',
-    peekHeader: 'Peek-шторка',
+    peekHeader: 'Рядом с вами',
+    peekPlaceName: 'Sunday Coffee Roasters',
+    peekCategory: 'Кофейня · спешелти-кофе',
+    peekRating: '4.8',
+    peekReviews: '512 отзывов',
+    peekOpenStatus: 'Открыто до 22:00',
+    peekDirections: 'Маршрут',
+    peekCall: 'Позвонить',
     peekBody:
-      'На 20% нет затемнённого фона — это не ощущается как модалка. Потяните вверх за середину — при переходе к 90% фон начнёт темнеть. Резкий флик в любую сторону сразу прыгает в крайнюю точку, а не на один шаг.',
+      'Открывается сразу на 90% — фон и затемнение уже полностью видны. Потяните вниз к 20% — оба эффекта полностью исчезают: ни затемнения, ни масштабирования фона. Резкий флик в любую сторону сразу прыгает в крайнюю точку, а не на один шаг.',
 
     playgroundKicker: 'Плейграунд',
     playgroundTitle: 'Почувствуйте физику вживую',
@@ -154,6 +189,8 @@ const messages = {
     playgroundOpen: 'Открыть шторку-плейграунд',
     playgroundHeader: 'Физика вживую',
     playgroundBody: 'Эта шторка использует те значения, что сейчас выставлены на слайдерах. Закройте, покрутите, откройте снова.',
+    playgroundBody2:
+      'Под капотом — затухающий гармонический осциллятор, интегрируемый раз за кадр методом полунеявного Эйлера, а не заранее нарисованная easing-кривая. Скорость вашего свайпа становится его начальной скоростью.',
     resetDefaults: 'Сбросить к умолчаниям',
 
     programmaticKicker: 'Программное управление',
@@ -163,6 +200,9 @@ const messages = {
     closeIt: 'Закрыть',
     programmaticHeader: 'Дистанционное управление',
     programmaticBody: 'Открыта и переключена целиком кнопками снаружи шторки.',
+    programmaticStop25: 'Превью',
+    programmaticStop60: 'Детали',
+    programmaticStop100: 'На весь экран',
 
     footerNote: 'Полный исходный код, README и разбор физики — в самом пакете.',
   },
