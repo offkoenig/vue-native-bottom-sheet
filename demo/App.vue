@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import BottomSheet from '../src/BottomSheet.vue'
 import { t, lang, toggleLang } from './i18n'
 
@@ -45,6 +45,31 @@ const inputsMessage = ref('')
 function submitInputs() {
   inputsOpen.value = false
 }
+
+/* Live visualViewport readout — for chasing the iOS keyboard-inset formula
+   against real device numbers instead of guessing from spec text. */
+const debugViewport = ref({ innerH: 0, vvH: 0, vvOffsetTop: 0, keyboardInset: 0 })
+function updateDebugViewport() {
+  if (typeof window === 'undefined') return
+  const vv = window.visualViewport
+  debugViewport.value = {
+    innerH: window.innerHeight,
+    vvH: vv ? Math.round(vv.height) : window.innerHeight,
+    vvOffsetTop: vv ? Math.round(vv.offsetTop) : 0,
+    keyboardInset: vv ? Math.max(Math.round(window.innerHeight - vv.offsetTop - vv.height), 0) : 0,
+  }
+}
+onMounted(() => {
+  updateDebugViewport()
+  window.visualViewport?.addEventListener('resize', updateDebugViewport)
+  window.visualViewport?.addEventListener('scroll', updateDebugViewport)
+  window.addEventListener('resize', updateDebugViewport)
+})
+onBeforeUnmount(() => {
+  window.visualViewport?.removeEventListener('resize', updateDebugViewport)
+  window.visualViewport?.removeEventListener('scroll', updateDebugViewport)
+  window.removeEventListener('resize', updateDebugViewport)
+})
 
 /* ---------- Physics playground ---------- */
 const playgroundOpen = ref(false)
@@ -390,6 +415,12 @@ function closeProgrammatic() {
           />
         </label>
       </form>
+      <div class="debug-panel">
+        <div>window.innerHeight: {{ debugViewport.innerH }}</div>
+        <div>visualViewport.height: {{ debugViewport.vvH }}</div>
+        <div>visualViewport.offsetTop: {{ debugViewport.vvOffsetTop }}</div>
+        <div>keyboardInset (innerHeight − offsetTop − height): {{ debugViewport.keyboardInset }}</div>
+      </div>
       <template #footer>
         <button class="btn btn-block" type="button" @click="submitInputs">{{ t.inputsSubmit }}</button>
       </template>
@@ -944,6 +975,17 @@ input[type='range']::-moz-range-thumb {
 .sheet-textarea {
   resize: vertical;
   min-height: 96px;
+}
+
+.debug-panel {
+  margin: 12px 20px 0;
+  padding: 10px 12px;
+  border: 1px dashed var(--border);
+  border-radius: 10px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11px;
+  line-height: 1.7;
+  color: var(--muted);
 }
 
 .grad-1 {
