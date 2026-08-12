@@ -60,8 +60,15 @@ export interface BottomSheetProps {
   dismissible?: boolean
   /** If true, a drag gesture can only be started from the grabber bar — the header slot and content area no longer initiate a drag (they can still scroll normally). */
   grabberOnly?: boolean
-  /** Whether the panel receives focus once the open animation finishes. */
-  autoFocus?: boolean
+  /**
+   * Whether something receives focus once the open animation finishes.
+   * `true` (default) focuses the panel itself. `'input'` instead focuses
+   * the first visible, enabled `input`/`textarea`/`select`/
+   * `[contenteditable]` inside it — handy for forms, so the keyboard is
+   * already up and ready to type into. Falls back to focusing the panel
+   * if no such element exists. `false` disables auto-focus entirely.
+   */
+  autoFocus?: boolean | 'input'
   /** Lock body scroll while the sheet is open (accounting for iOS Safari quirks). */
   lockBodyScroll?: boolean
   /**

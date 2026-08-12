@@ -152,7 +152,7 @@ If that's not enough, `panelClass` / `contentClass` / `backdropClass` accept any
 | `closeOnEscape` | `boolean` | `true` | Close on the `Escape` key. |
 | `dismissible` | `boolean` | `true` | If `false`, swipe/backdrop/`Escape` won't close the sheet — only programmatic close works. |
 | `grabberOnly` | `boolean` | `false` | If `true`, a drag can only be started from the grabber bar — the header slot and content area no longer initiate one (they still scroll normally). |
-| `autoFocus` | `boolean` | `true` | Whether the panel receives focus once the open animation finishes. |
+| `autoFocus` | `boolean \| 'input'` | `true` | Whether something receives focus once the open animation finishes. `true` focuses the panel; `'input'` instead focuses the first visible, enabled `input`/`textarea`/`select`/`[contenteditable]` inside it (falls back to the panel if there isn't one) — handy for a sheet that's mostly a form. `false` disables it entirely. |
 | `lockBodyScroll` | `boolean` | `true` | Lock `<body>` scroll while the sheet is open. |
 | `lockScrollTarget` | `string \| HTMLElement` | — | If your app's actual scrollable container isn't `<body>`/`window` (an app shell with its own `overflow-y: auto` wrapper, say), a CSS selector or element here gets its scroll locked too, alongside `<body>`. Governed by the same `lockBodyScroll` switch. |
 | `themeColor` | `string` | — | A CSS color applied to `<meta name="theme-color">` while the sheet is open (what mobile browsers, notably iOS Safari's toolbar, tint their UI chrome with) — restored to whatever it was before on close. The library can't sample the actual rendered color of arbitrary slot content, so this isn't automatic; pass the color your content actually is. |

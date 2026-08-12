@@ -710,7 +710,7 @@ function openSheet() {
       isOpeningPending = false
       springAnimateTo(snapTranslates.value[currentSnapIndex.value], 0, () => {
         emit('opened')
-        if (props.autoFocus) sheetRef.value?.focus()
+        focusOnOpen()
       })
     })
   })
@@ -1079,6 +1079,28 @@ function getFocusableElements(): HTMLElement[] {
   return Array.from(sheetRef.value.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)).filter(
     (el) => el.offsetParent !== null,
   )
+}
+
+const INPUT_LIKE_SELECTOR =
+  'input:not([disabled]):not([type="hidden"]), textarea:not([disabled]), select:not([disabled]), [contenteditable="true"]'
+
+/** For `autoFocus="input"` — the first visible, enabled input-like element in the panel, in DOM order. */
+function getFirstInputElement(): HTMLElement | null {
+  if (!sheetRef.value) return null
+  const el = sheetRef.value.querySelector<HTMLElement>(INPUT_LIKE_SELECTOR)
+  return el && el.offsetParent !== null ? el : null
+}
+
+function focusOnOpen() {
+  if (!props.autoFocus) return
+  if (props.autoFocus === 'input') {
+    const inputEl = getFirstInputElement()
+    if (inputEl) {
+      inputEl.focus()
+      return
+    }
+  }
+  sheetRef.value?.focus()
 }
 
 function onSheetKeydown(e: KeyboardEvent) {
