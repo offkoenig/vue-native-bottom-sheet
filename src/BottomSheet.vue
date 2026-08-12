@@ -1119,7 +1119,7 @@ onBeforeUnmount(() => {
           <div class="vbs-grabber-row" @pointerdown="onGrabberPointerDown">
             <span class="vbs-grabber-bar" aria-hidden="true" />
           </div>
-          <div v-if="$slots.header" @pointerdown="onHeaderPointerDown">
+          <div v-if="$slots.header" class="vbs-header-zone" @pointerdown="onHeaderPointerDown">
             <slot name="header" :close="close" :snap-index="currentSnapIndex" />
           </div>
         </div>
@@ -1255,6 +1255,15 @@ onBeforeUnmount(() => {
   height: 0.375rem;
   border-radius: 9999px;
   background: var(--vbs-handle-color);
+}
+
+/* Without this, a mouse-drag started on header text (a title, say) is
+   read by the browser as a text-selection drag first — the sheet still
+   ends up moving once the gesture crosses the threshold, but the visible
+   selection highlight fighting for the same gesture reads as "broken." */
+.vbs-header-zone {
+  touch-action: none;
+  user-select: none;
 }
 
 .vbs-content {
