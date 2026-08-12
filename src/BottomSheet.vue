@@ -453,9 +453,33 @@ function restoreScaleBackground() {
   isBodyBackgroundOn = false
 }
 
+/**
+ * A lagged copy of minTranslate: tracks it normally, except it withholds a
+ * move to a MORE open (smaller) value until translateY has actually caught
+ * up to at least that point. minTranslate updates the instant a 'content'
+ * snap point's measured height changes, but translateY only follows it
+ * gradually via the spring — using minTranslate directly in openProgress
+ * below would make it (and backdrop/scaleBackground, which read off it)
+ * visibly dip for a frame every time content grows while resting on that
+ * point, since the "open" boundary jumps ahead of the position it's
+ * measured against. Shrinking the target doesn't have this problem (the
+ * ratio only ever clamps toward 1, never dips), so only that direction
+ * needs withholding.
+ */
+const stableMinTranslate = ref(minTranslate.value)
+watch(
+  [minTranslate, translateY],
+  ([mt, ty]) => {
+    if (mt >= stableMinTranslate.value || ty <= mt) {
+      stableMinTranslate.value = mt
+    }
+  },
+  { immediate: true },
+)
+
 /** 0 (closed) .. 1 (resting on the top-most snap point) — the "no fadeFromIndex" baseline both the backdrop and the background scale fall back to. */
 const openProgress = computed(() => {
-  const open = minTranslate.value
+  const open = stableMinTranslate.value
   const closed = closedTranslate.value
   const range = closed - open || 1
   return 1 - Math.min(Math.max((translateY.value - open) / range, 0), 1)
