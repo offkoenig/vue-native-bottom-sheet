@@ -1032,10 +1032,26 @@ function onBackdropClick() {
   if (props.closeOnBackdropClick) requestClose()
 }
 
-const backdropStyle = computed(() => ({
-  opacity: dimProgress.value * props.backdropOpacity,
-  zIndex: props.zIndex,
-}))
+/**
+ * backdrop-filter: blur() is one of the most expensive things to animate
+ * on iOS Safari — it has to re-composite a live blurred sample of whatever
+ * sits behind the backdrop every frame opacity changes, and doing that in
+ * lockstep with the panel's own translateY is what tends to drag a drag/
+ * spring down to a noticeably lower, choppier framerate specifically
+ * there. Dropping the blur for the duration of an active drag or spring
+ * (and restoring it once settled) keeps the visual almost entirely intact
+ * while removing the one property that's actually costly to animate.
+ */
+const backdropStyle = computed(() => {
+  const blurred = !isDragging.value && !isAnimating.value
+  return {
+    opacity: dimProgress.value * props.backdropOpacity,
+    zIndex: props.zIndex,
+    // Vue's :style binding auto-prefixes this to -webkit-backdrop-filter
+    // on engines that need it (older Safari) — no manual Webkit* key needed.
+    backdropFilter: blurred ? 'blur(2px)' : 'none',
+  }
+})
 
 const sheetStyle = computed(() => ({
   transform: `translate3d(0, ${translateY.value - keyboardInset.value}px, 0)`,
@@ -1181,14 +1197,18 @@ onBeforeUnmount(() => {
   position: fixed;
   inset: 0;
   background: #000;
-  backdrop-filter: blur(2px);
-  -webkit-backdrop-filter: blur(2px);
+  /* backdrop-filter itself is set reactively via backdropStyle (dropped
+     during an active drag/spring — see the computed's comment). */
   /* No pointer/touch handler here calls preventDefault (only a click
      listener), so without this, a touch that starts on the backdrop and
      moves is left for the browser to interpret as a generic scroll/nav
      gesture — on touch devices that's part of what can trigger
      pull-to-refresh even while body scroll is locked. */
   touch-action: none;
+  /* opacity changes every frame during a drag/spring, same as the panel's
+     translateY — promoting it to its own layer up front avoids Safari
+     deciding this mid-animation, which is itself a jank source. */
+  will-change: opacity;
 }
 
 .vbs-panel {
