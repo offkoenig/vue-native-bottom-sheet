@@ -18,7 +18,7 @@ const messages = {
     tryIt: 'Try every example on a touch device for the full effect — mouse drag works too.',
 
     examplesKicker: 'Examples',
-    examplesTitle: 'Six ways to configure it',
+    examplesTitle: 'Seven ways to configure it',
 
     basicTitle: 'Basic',
     basicDesc: 'Default snap points [50, 100]. Flick down fast enough and it closes even from a small drag.',
@@ -80,6 +80,17 @@ const messages = {
     peekBody:
       'This opens straight to 90%, where the backdrop and scaled background are both fully visible. Drag it down toward the 20% peek and both fade out completely — no dimmed backdrop, no scaled background. A hard flick in either direction jumps straight to the edge instead of stepping one snap at a time.',
 
+    inputsTitle: 'Inputs & keyboard',
+    inputsDesc:
+      'A real `<input>` and `<textarea>` inside the sheet — on iOS Safari, focusing one opens the keyboard and the sheet repositions itself above it via visualViewport, without a gap underneath.',
+    inputsOpen: 'Open sheet',
+    inputsHeader: 'Send feedback',
+    inputsNameLabel: 'Name',
+    inputsNamePlaceholder: 'Ada Lovelace',
+    inputsMessageLabel: 'Message',
+    inputsMessagePlaceholder: 'Tap here and the keyboard should push the sheet up cleanly, no matter which snap point it started on…',
+    inputsSubmit: 'Send',
+
     playgroundKicker: 'Playground',
     playgroundTitle: 'Feel the physics change live',
     playgroundDesc:
@@ -117,7 +128,7 @@ const messages = {
     tryIt: 'Для полного эффекта пробуйте на тач-устройстве — но и мышью тоже работает.',
 
     examplesKicker: 'Примеры',
-    examplesTitle: 'Шесть вариантов настройки',
+    examplesTitle: 'Семь вариантов настройки',
 
     basicTitle: 'Базовый',
     basicDesc: 'Точки прилипания [50, 100] по умолчанию. Быстрый свайп вниз закрывает даже при небольшом протягивании.',
@@ -178,6 +189,17 @@ const messages = {
     peekCall: 'Позвонить',
     peekBody:
       'Открывается сразу на 90% — фон и затемнение уже полностью видны. Потяните вниз к 20% — оба эффекта полностью исчезают: ни затемнения, ни масштабирования фона. Резкий флик в любую сторону сразу прыгает в крайнюю точку, а не на один шаг.',
+
+    inputsTitle: 'Поля ввода и клавиатура',
+    inputsDesc:
+      'Настоящие `<input>` и `<textarea>` внутри шторки — в iOS Safari фокус на поле открывает клавиатуру, и шторка сама переставляется над ней через visualViewport, без дыры снизу.',
+    inputsOpen: 'Открыть шторку',
+    inputsHeader: 'Обратная связь',
+    inputsNameLabel: 'Имя',
+    inputsNamePlaceholder: 'Ада Лавлейс',
+    inputsMessageLabel: 'Сообщение',
+    inputsMessagePlaceholder: 'Тапните сюда — клавиатура должна аккуратно поднять шторку, с какой бы точки она ни начинала…',
+    inputsSubmit: 'Отправить',
 
     playgroundKicker: 'Плейграунд',
     playgroundTitle: 'Почувствуйте физику вживую',

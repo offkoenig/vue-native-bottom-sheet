@@ -38,6 +38,14 @@ const peekOpen = ref(false)
 const peekScaleBg = ref(true)
 const peekGrabberOnly = ref(false)
 
+/* ---------- Inputs & keyboard ---------- */
+const inputsOpen = ref(false)
+const inputsName = ref('')
+const inputsMessage = ref('')
+function submitInputs() {
+  inputsOpen.value = false
+}
+
 /* ---------- Physics playground ---------- */
 const playgroundOpen = ref(false)
 const stiffness = ref(300)
@@ -139,6 +147,12 @@ function closeProgrammatic() {
               {{ t.peekGrabberOnly }}
             </label>
             <button class="btn" type="button" @click="peekOpen = true">{{ t.peekOpen }}</button>
+          </article>
+
+          <article class="card">
+            <h3>{{ t.inputsTitle }}</h3>
+            <p>{{ t.inputsDesc }}</p>
+            <button class="btn" type="button" @click="inputsOpen = true">{{ t.inputsOpen }}</button>
           </article>
         </div>
       </section>
@@ -351,6 +365,33 @@ function closeProgrammatic() {
           <button class="btn btn-ghost" type="button" @click="close">{{ t.peekDirections }}</button>
           <button class="btn" type="button" @click="close">{{ t.peekCall }}</button>
         </div>
+      </template>
+    </BottomSheet>
+
+    <BottomSheet v-model="inputsOpen" :snap-points="[55, 90]" :respect-reduced-motion="false">
+      <template #header="{ close }">
+        <div class="sheet-header">
+          <h2>{{ t.inputsHeader }}</h2>
+          <button class="icon-btn" type="button" @click="close">✕</button>
+        </div>
+      </template>
+      <form class="sheet-form" @submit.prevent="submitInputs">
+        <label class="sheet-field">
+          <span class="sheet-field-label">{{ t.inputsNameLabel }}</span>
+          <input v-model="inputsName" type="text" class="sheet-input" :placeholder="t.inputsNamePlaceholder" />
+        </label>
+        <label class="sheet-field">
+          <span class="sheet-field-label">{{ t.inputsMessageLabel }}</span>
+          <textarea
+            v-model="inputsMessage"
+            class="sheet-textarea"
+            rows="5"
+            :placeholder="t.inputsMessagePlaceholder"
+          />
+        </label>
+      </form>
+      <template #footer>
+        <button class="btn btn-block" type="button" @click="submitInputs">{{ t.inputsSubmit }}</button>
       </template>
     </BottomSheet>
 
@@ -866,6 +907,40 @@ input[type='range']::-moz-range-thumb {
   color: var(--muted);
   font-variant-numeric: tabular-nums;
   flex-shrink: 0;
+}
+
+.sheet-form {
+  display: grid;
+  gap: 16px;
+  padding: 0 20px 4px;
+}
+.sheet-field {
+  display: grid;
+  gap: 6px;
+}
+.sheet-field-label {
+  font-size: 13px;
+  font-weight: 600;
+}
+.sheet-input,
+.sheet-textarea {
+  appearance: none;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--ink);
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 15px;
+  font-family: inherit;
+  outline: none;
+}
+.sheet-input:focus,
+.sheet-textarea:focus {
+  border-color: var(--accent);
+}
+.sheet-textarea {
+  resize: vertical;
+  min-height: 96px;
 }
 
 .grad-1 {
