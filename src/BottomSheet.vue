@@ -146,17 +146,20 @@ const isDragging = ref(false)
 const isAnimating = ref(false)
 
 /**
- * `position: fixed` stays anchored to the LAYOUT viewport, but iOS
- * Safari's on-screen keyboard only shrinks and pans the VISUAL viewport
- * (`visualViewport.offsetTop` grows as the page pans to keep the focused
- * input visible above the keyboard) — `window.innerHeight` doesn't
- * reliably shrink to match. Left uncompensated, a `bottom: 0` panel stays
- * pinned to the layout viewport's bottom, which ends up hidden under the
- * keyboard, leaving a visible gap between the panel and the actually-
- * visible bottom edge of the screen. `keyboardInset` is that gap, applied
- * as an extra upward shift in `sheetStyle` below. It's 0 whenever there's
- * no keyboard (or no visualViewport support), so this is a no-op outside
- * that specific scenario.
+ * iOS Safari's on-screen keyboard affects the VISUAL viewport in two
+ * independent ways — shrinking it (`vv.height`) and panning it
+ * (`vv.offsetTop`, as the page scrolls to keep the focused input visible
+ * above the keyboard) — while `position: fixed` stays anchored to the
+ * LAYOUT viewport, which does neither. The shrink is already handled:
+ * `viewportHeight` above is read straight from `vv.height`, so every
+ * snap-point/closedTranslate calculation is already expressed in "the
+ * area actually visible above the keyboard" terms. `keyboardInset` only
+ * needs to cover what that doesn't: the PAN, since `bottom: 0` anchors the
+ * panel to the layout viewport's bottom, not to wherever the visual
+ * viewport has scrolled to. It's `vv.offsetTop`, full stop — mixing the
+ * shrink back in here (e.g. via `innerHeight - offsetTop - height`) would
+ * double-count it on top of what `viewportHeight` already accounts for,
+ * shifting the panel up by more than the keyboard's actual footprint.
  */
 const keyboardInset = ref(0)
 
@@ -165,7 +168,7 @@ function updateViewportHeight() {
   const vv = window.visualViewport
   if (vv) {
     viewportHeight.value = vv.height
-    keyboardInset.value = Math.max(window.innerHeight - vv.offsetTop - vv.height, 0)
+    keyboardInset.value = vv.offsetTop
   } else {
     viewportHeight.value = window.innerHeight
     keyboardInset.value = 0
