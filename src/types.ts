@@ -19,7 +19,7 @@ export interface BottomSheetProps {
    * re-sorted whenever the measured 'content' height changes).
    */
   snapPoints?: (number | 'content')[]
-  /** Index into snapPoints the sheet opens to by default. */
+  /** Index into the (sorted, least open first) snapPoints the sheet opens to by default. */
   defaultSnapPoint?: number
   /** Swipe velocity threshold (px/ms) above which an inertial transition/close kicks in. */
   closeThreshold?: number
@@ -103,6 +103,8 @@ export interface BottomSheetProps {
    * A no-op if no such element exists. The scale itself is driven by the
    * same live translateY as the sheet and backdrop — not a separate CSS
    * transition — so it tracks drag/rubber-band/spring motion exactly.
+   * Corners are clipped at a constant radius as soon as the scale engages:
+   * animating the radius would repaint your whole app on every frame.
    */
   scaleBackground?: boolean
   /** Color painted behind the scaled-down background (fills the gap the rounded corners reveal) while `scaleBackground` is active. */
@@ -136,6 +138,6 @@ export interface BottomSheetEmits {
 export interface BottomSheetExposed {
   /** Close programmatically (equivalent to v-model = false, but with no arguments — safe for @click). */
   close: () => void
-  /** Instantly snap to a snap point by index, without closing or reopening. */
+  /** Spring to a snap point by index (into the sorted snapPoints), without closing or reopening. */
   snapToIndex: (index: number) => void
 }

@@ -23,7 +23,9 @@
   ],
   "license": "MIT",
   "type": "module",
-  "sideEffects": false,
+  "sideEffects": [
+    "*.vue"
+  ],
   "files": [
     "dist"
   ],

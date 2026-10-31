@@ -13,11 +13,11 @@ Works as a regular component library in **any** Vue 3 (≥3.4) project — Vite,
 - **v-model** via `defineModel()`.
 - 3 named slots — `header`, default, `footer` — each with a scoped `close()` prop.
 - Renders through `<Teleport to="body">`, fully SSR-safe.
-- Only `transform: translate3d(...)` changes during a drag — a genuinely stable 60 FPS.
+- Only `transform` and the backdrop's `opacity` change during a drag or spring, written directly to the DOM — no layout, and no re-render of your slots, however heavy they are.
 - Velocity-based inertia: a fast downward swipe closes the sheet even if only ~10% of the height was dragged.
 - Rubber-band resistance when dragging past the fully-open point — the same formula WebKit/UIScrollView uses.
 - Configurable snap points — fixed percentages or `'content'` (auto-fits and live-adapts to actual content height); every settle/open/close animation is a spring (Hooke's law), not a CSS transition.
-- Body scroll lock that accounts for iOS Safari, with a smooth handoff between content scroll and sheet drag.
+- Body scroll lock that accounts for iOS Safari and for several sheets open at once, with a smooth handoff between content scroll and sheet drag on real touch screens.
 - Escape closes, Tab keeps focus trapped inside the panel, and it respects `prefers-reduced-motion`.
 - Dark mode out of the box — via `prefers-color-scheme` and/or a `.dark` class on an ancestor.
 - No Tailwind/UnoCSS dependency — styles ship with the component; add your own classes on top via `panelClass` / `contentClass` / `backdropClass` if you want to.
@@ -136,13 +136,13 @@ If that's not enough, `panelClass` / `contentClass` / `backdropClass` accept any
 
 | Prop | Type | Default | Description |
 |---|---|---|---|
-| `snapPoints` | `(number \| 'content')[]` | `[50, 100]` | Snap points as % of viewport height. `'content'` measures the actual rendered height of header+default+footer via `ResizeObserver` instead (capped at 100dvh) and re-springs live if that content changes size while open. Order doesn't matter — sorted automatically, including around a moving `'content'` point. |
-| `defaultSnapPoint` | `number` | `0` | Index into `snapPoints` the sheet opens to by default. |
+| `snapPoints` | `(number \| 'content')[]` | `[50, 100]` | Snap points as % of viewport height. `'content'` measures the actual rendered height of header+default+footer via `ResizeObserver` instead (capped at the visible viewport) and re-springs live if that content changes size while open. Order doesn't matter — sorted automatically, including around a moving `'content'` point. |
+| `defaultSnapPoint` | `number` | `0` | Index into the sorted `snapPoints` (least open first) the sheet opens to by default. |
 | `closeThreshold` | `number` | `0.5` | Swipe velocity threshold (px/ms) above which an inertial transition/close kicks in. |
 | `edgeFlickVelocity` | `number` | `1.8` | Swipe velocity (px/ms) above which a flick jumps straight to the edge — fully closed (or the lowest snap point, if not dismissible) on a fast downward flick, or the top-most snap point on a fast upward one — instead of moving one snap point at a time. Must exceed `closeThreshold` to matter; set to `Infinity` to disable. |
 | `rubberBandResistance` | `number` | `0.55` | Resistance (0..1) of the rubber-band effect above the top snap point. `0.55` is WebKit/UIScrollView's own constant. |
-| `springStiffness` | `number` | `300` | Spring stiffness (`k`). Higher — faster and "tighter". |
-| `springDamping` | `number` | `32` | Spring damping (`c`). Higher — less "settle" overshoot at the end. |
+| `springStiffness` | `number` | `600` | Spring stiffness (`k`). Higher — faster and "tighter". |
+| `springDamping` | `number` | `42` | Spring damping (`c`). Higher — less "settle" overshoot at the end. |
 | `springMass` | `number` | `1` | Spring body mass (`m`). |
 | `respectReducedMotion` | `boolean` | `true` | Whether to honor `prefers-reduced-motion: reduce` (instant transitions instead of a spring). If your app opens without any visible animation and you didn't expect that, this is almost certainly why — check the OS/browser accessibility setting before assuming it's a bug. Turn off only deliberately (e.g. in a demo whose whole point is to show the animation). |
 | `showBackdrop` | `boolean` | `true` | Show the dimmed backdrop. |
@@ -156,7 +156,7 @@ If that's not enough, `panelClass` / `contentClass` / `backdropClass` accept any
 | `lockBodyScroll` | `boolean` | `true` | Lock `<body>` scroll while the sheet is open. |
 | `lockScrollTarget` | `string \| HTMLElement` | — | If your app's actual scrollable container isn't `<body>`/`window` (an app shell with its own `overflow-y: auto` wrapper, say), a CSS selector or element here gets its scroll locked too, alongside `<body>`. Governed by the same `lockBodyScroll` switch. |
 | `themeColor` | `string` | — | A CSS color applied to `<meta name="theme-color">` while the sheet is open (what mobile browsers, notably iOS Safari's toolbar, tint their UI chrome with) — restored to whatever it was before on close. The library can't sample the actual rendered color of arbitrary slot content, so this isn't automatic; pass the color your content actually is. |
-| `scaleBackground` | `boolean` | `false` | Scales down and rounds the corners of your app's background while the sheet is open — the iOS "card stack" look. Requires an element elsewhere in the DOM marked `data-vbs-background` (a sibling of where `BottomSheet` teleports to, not an ancestor); a no-op without one. See [Background scale effect](#background-scale-effect). |
+| `scaleBackground` | `boolean` | `false` | Scales down and rounds the corners of the visible part of your app's background while the sheet is open — the iOS "card stack" look. Requires an element elsewhere in the DOM marked `data-vbs-background` (a sibling of where `BottomSheet` teleports to, not an ancestor); a no-op without one. See [Background scale effect](#background-scale-effect). |
 | `scaleBackgroundColor` | `string` | `'#000000'` | Color painted behind the scaled-down background, filling the gap its rounded corners reveal, while `scaleBackground` is active. |
 | `ariaLabel` | `string` | `'Panel'` | `aria-label` for the dialog. |
 | `zIndex` | `number` | `60` | Base z-index (backdrop = `zIndex`, panel = `zIndex + 1`). |
@@ -174,7 +174,7 @@ Instead of guessing a percentage, a snap point can be the literal string `'conte
 </BottomSheet>
 ```
 
-Under the hood, `header` + default slot + `footer` are measured with a `ResizeObserver` (capped at `100dvh`) and converted to a translateY exactly like a percentage point — same sort order, same rubber-band, same spring. If the content's height changes while the sheet is open (an accordion expands, an image loads), it re-springs to the new height live, without closing.
+Under the hood, `header` + default slot + `footer` are measured with a `ResizeObserver` (capped at the visible viewport) and converted to a translateY exactly like a percentage point — same sort order, same rubber-band, same spring. If the content's height changes while the sheet is open (an accordion expands, an image loads), it re-springs to the new height live, without closing.
 
 `'content'` can be mixed with fixed percentages, e.g. `:snap-points="['content', 100]"` opens sized to content but still lets a fast upward flick take it to 100%. Pairing it with a point the content can never exceed (`100`) keeps sort order stable; mixing it with an *intermediate* fixed point (e.g. `['content', 50]`) is supported too, but if the measured content height crosses that point, the point order — and therefore what index a given snap position corresponds to — changes accordingly.
 
@@ -193,7 +193,7 @@ Under the hood, `header` + default slot + `footer` are measured with a `ResizeOb
 </template>
 ```
 
-Unlike a typical implementation of this effect (a fixed-duration CSS transition fired at open/close), the scale here is driven by the exact same live `translateY` the sheet and backdrop already use, applied imperatively to that element — so it tracks drag, rubber-band, and the spring settle frame-for-frame instead of running on its own separate timing curve. If no `data-vbs-background` element exists, this is a silent no-op.
+Unlike a typical implementation of this effect (a fixed-duration CSS transition fired at open/close), the scale here is driven by the exact same live `translateY` the sheet and backdrop already use, applied imperatively to that element — so it tracks drag, rubber-band, and the spring settle frame-for-frame instead of running on its own separate timing curve. Only the transform animates: the corners are a `clip-path` set once at a constant radius when the scale engages, because animating the radius would repaint your whole app on every frame. If no `data-vbs-background` element exists, this is a silent no-op.
 
 If `fadeFromIndex` is also set, the background scale shares its progress with the backdrop — it stays untouched below that snap point and only starts scaling/tinting once you cross into it, so a "peek" state doesn't visually change the background any more than it dims it.
 
@@ -218,7 +218,7 @@ If `fadeFromIndex` is also set, the background scale shares its progress with th
 
 ## Programmatic control
 
-`close()` and `snapToIndex(index)` are exposed via `defineExpose` — grab them through a template ref:
+`close()` and `snapToIndex(index)` (which springs to that index in the sorted snap points) are exposed via `defineExpose` — grab them through a template ref:
 
 ```vue
 <script setup lang="ts">
@@ -242,23 +242,25 @@ function expandFully() {
 
 ### 1. Coordinate system
 
-The panel is a `100dvh`-tall element pinned to the bottom of the screen (`position: fixed; bottom: 0`). Its whole position is described by a single number — `translateY` (px):
+The panel is exactly as tall as the visible viewport and anchored by its top edge (`position: fixed; top: 0`). Its whole position is described by a single number — `translateY` (px):
 
 - `translateY = 0` → 100% of the viewport height is visible.
 - `translateY = viewportHeight` → the panel is entirely below the bottom edge ("closed").
 - A snap point at `p`% of viewport height corresponds to `translateY = viewportHeight × (1 − p / 100)`.
 
-Since only `translateY` changes during a gesture, via `transform: translate3d(0, Ypx, 0)`, the browser never recomputes layout — only compositing — which is what gives a genuinely stable 60 FPS.
+Since only `translateY` changes during a gesture, via `transform: translate3d(0, Ypx, 0)`, the browser never recomputes layout — only compositing. The value also bypasses Vue on the way there: a reactive `translateY` would re-run the component's render function, and every slot with it, on every frame, at a cost that grows with your content. Each frame writes straight to the panel, footer, backdrop, and scaled background instead.
+
+With the on-screen keyboard up, percentages stay relative to the pre-keyboard height (a 55% sheet stays that tall, capped at what's visible), and the panel rides `visualViewport.offsetTop` so it stays on the visible area.
 
 ### 2. Swipe velocity
 
-The component keeps a sliding window of `{y, t}` points from the last ~150ms. On release, velocity is computed as:
+The component keeps a sliding window of `{y, t}` points from the last ~100ms. On release, velocity is computed as:
 
 ```
 velocity = (yLast − yFirst) / (tLast − tFirst)      [px/ms]
 ```
 
-A 150ms window rather than the delta between the last two `pointermove` events, because an instantaneous delta is too noisy (especially on Android) — the window smooths that noise out while staying short enough to reflect the final "releasing" flick rather than the whole gesture.
+A 100ms window rather than the delta between the last two move events, because an instantaneous delta is too noisy (especially on Android) — the window smooths that noise out while staying short enough to reflect the final "releasing" flick rather than the whole gesture. Only the last stretch in one direction counts, so a reversal right before release isn't averaged away, and a pause of over 80ms before lifting the finger reads as zero velocity: that's placing the sheet, not flicking it.
 
 ### 3. Rubber band
 
@@ -272,7 +274,7 @@ where `x` is the amount of "extra" overdrag (px), `d` is the viewport height, an
 
 ### 4. Spring physics
 
-After release (and on programmatic open/close), `translateY` isn't animated with a fixed-duration CSS transition — it's integrated as a damped harmonic oscillator (Hooke's law + viscous damping) using semi-implicit Euler, once per frame:
+After release (and on programmatic open/close), `translateY` isn't animated with a fixed-duration CSS transition — it's integrated as a damped harmonic oscillator (Hooke's law + viscous damping) using semi-implicit Euler, in fixed 1/240s steps (as many per frame as the elapsed time calls for), so the motion is the same at 60Hz and 120Hz and a dropped frame can't destabilize a stiff configuration:
 
 ```
 displacement  = position − target
@@ -281,7 +283,7 @@ velocity     += acceleration · dt
 position     += velocity · dt
 ```
 
-where `k` = `springStiffness`, `c` = `springDamping`, `m` = `springMass`. The animation stops once `|velocity| < 6 px/s` and `|position − target| < 0.5px`.
+where `k` = `springStiffness`, `c` = `springDamping`, `m` = `springMass`. The animation stops once `|velocity| < 6 px/s` and `|position − target| < 0.5px`, or, when closing, as soon as the panel is out of sight. Above the top-most snap point damping triples, so a hard upward flick digs in softly instead of flying past it.
 
 > Inside the simulation, velocity is kept in **px/s** (not px/ms, like the measured gesture velocity) — the gesture's `velocity` is multiplied by 1000 once when the spring starts. That's just a unit conversion for integrating correctly against `dt` in seconds.
 
@@ -289,12 +291,12 @@ The key detail: **the spring's initial velocity in this equation is the measured
 
 The spring is also **interruptible**: grabbing the sheet while it's still animating open, closed, or toward a snap point picks the drag up from wherever `translateY` currently is, mid-flight — there's no "wait for it to finish first." A real physical object doesn't refuse to be touched while it's still moving, and neither does this.
 
-At `k = 300, c = 32, m = 1` the system is slightly underdamped: critical damping is `2√(k·m) ≈ 34.6`, and `32` sits just below that. Hence the barely-perceptible settle at the end — the detail that reads as "native" rather than a linear or abrupt stop.
+At `k = 600, c = 42, m = 1` the system is slightly underdamped: critical damping is `2√(k·m) ≈ 49`, and `42` sits below that, so the sheet covers 90% of the distance in about 130ms and overshoots by well under 1%. Hence the barely-perceptible settle at the end — the detail that reads as "native" rather than a linear or abrupt stop.
 
 ### 5. Deciding where to settle on release
 
-1. `velocity > closeThreshold` (fast downward flick) → move to the snap point one index down; if already at the lowest one, close.
-2. `velocity < −closeThreshold` (fast upward flick) → move to the snap point one index up.
+1. `velocity > closeThreshold` (fast downward flick) → move to the next snap point below where the sheet is right now; if there's none, close.
+2. `velocity < −closeThreshold` (fast upward flick) → move to the next snap point above where the sheet is right now.
 3. Otherwise (a slow release) → snap to whichever point — among all `snapPoints` plus "closed" — is geometrically closest.
 
 Rule 1 is what lets a fast downward swipe close the sheet even if only ~10% of the height was dragged. If `dismissible === false`, closing in rules 1/3 is replaced with returning to the lowest (first) snap point instead.
@@ -303,12 +305,15 @@ A flick fast enough to clear `edgeFlickVelocity` (`1.8` px/ms by default) skips 
 
 ### 6. Scroll handoff
 
-The default slot's area listens for `pointerdown` and enters a `pending` state; which way the first movement goes decides who wins:
+Touch goes through touch events with a non-passive `touchmove`, mouse through pointer events. Pointer events can't compete with native scrolling: once the browser claims a pan it fires `pointercancel`, and `preventDefault()` on `pointermove` doesn't stop scrolling at all. A touch on the default slot's area enters a `pending` state, and the very first `touchmove` decides who wins, because on iOS that's the only one that can still cancel a scroll:
 
-- **Downward** takes over the sheet only if `contentRef.scrollTop <= 0` — content is already scrolled to the very top. Otherwise it's handed entirely to native scrolling (scrolling back up through content shouldn't drag the sheet).
-- **Upward** takes over the sheet as long as it isn't already resting on its top-most snap point — matches the "drag has priority until fully expanded" feel of Google Maps-style sheets. Once there's nowhere higher to go, further upward drags fall through to native scroll as usual.
+- **Mostly sideways** stays with the slot, so carousels and sliders inside it work.
+- **Downward** takes over the sheet only if everything under the finger, nested scrollers included, is scrolled to the very top. Otherwise it's handed entirely to native scrolling (scrolling back up through content shouldn't drag the sheet).
+- **Upward** takes over the sheet as long as it isn't already resting on its top-most snap point — matches the "drag has priority until fully expanded" feel of Google Maps-style sheets. Once there's nowhere higher to go, further upward drags fall through to native scroll as usual, or to the sheet's rubber band if there's nothing to scroll.
 
-A simpler rule (just a 4px movement threshold, no directional gate) applies to the `header` slot's area, so clicks on buttons inside it aren't hijacked by the drag but dragging works both ways. Set `grabberOnly` to skip all of this and only ever start a drag from the grabber bar.
+A simpler rule (a 4px movement threshold) applies to the `header` slot's area, so clicks on buttons inside it aren't hijacked by the drag but dragging works both ways. Set `grabberOnly` to skip all of this and only ever start a drag from the grabber bar. Add a `data-vbs-no-drag` attribute to any element in the slots that must never start a drag (a custom slider, say).
+
+Content stays fully reachable at any snap point: the scroller carries a spacer as tall as the part of the panel currently below the screen edge, resized only once the sheet is at rest.
 
 One consequence worth knowing: with a long scrollable list inside a multi-snap-point sheet, an upward swipe anywhere on it expands the sheet first rather than scrolling — scrolling only takes over once you're resting on the top-most point.
 
@@ -318,11 +323,11 @@ While a drag is in flight, a `vbs-dragging` class is toggled on `<html>` — a h
 
 - `role="dialog"`, `aria-modal="true"`, configurable via `ariaLabel`.
 - Focus moves into the panel on open and returns to the triggering element on close.
-- `Tab`/`Shift+Tab` don't leave the panel while it's open (focus trap).
-- `Escape` closes it (if `closeOnEscape`).
+- `Tab`/`Shift+Tab` don't leave the panel while it's open (focus trap), and pull focus in if it was left outside.
+- `Escape` closes it (if `closeOnEscape`); with several sheets open, only the top-most one responds.
 - `:inert="!isOpen"` — while the panel is hidden, it's excluded from focus and from screen readers.
 - Respects `prefers-reduced-motion: reduce` — animations become instant.
-- Dragging never starts from underneath interactive elements (`button, a, input, textarea, select, [role="button"]`).
+- Dragging never starts from underneath interactive elements (`button, a, input, textarea, select, label, summary, [role="button"], [contenteditable="true"], [data-vbs-no-drag]`).
 
 ## Package architecture
 
@@ -381,7 +386,9 @@ Before publishing: replace the placeholder in `LICENSE`, and rename the package 
 
 **The page behind the sheet still scrolls even with `lockBodyScroll` on.** `lockBodyScroll` locks `<body>`/`window`. If your app's actual scroll container is something else — an app-shell wrapper with its own `overflow-y: auto`, for instance — locking `<body>` is a no-op for it. Pass that element (or a CSS selector for it) as `lockScrollTarget`.
 
-**A focused input inside the sheet triggers the on-screen keyboard, and a translucent gap appears at the bottom.** iOS Safari's keyboard shrinks and pans the *visual* viewport, while a `position: fixed` panel stays anchored to the *layout* viewport — the two diverge once the keyboard is up, which is what the gap is. The component compensates automatically by tracking `visualViewport`'s `resize`/`scroll` events and shifting the panel to match. This has been reasoned through against documented `visualViewport` behavior and covered by automated tests for everything *except* the on-screen-keyboard case itself — headless browser automation can't trigger a real iOS keyboard, so that specific path hasn't been confirmed on physical hardware. If you still see the gap, please open an issue with your iOS/Safari version.
+**A focused input inside the sheet triggers the on-screen keyboard, and a translucent gap appears at the bottom.** iOS Safari's keyboard shrinks and pans the *visual* viewport, while a `position: fixed` panel stays anchored to the *layout* viewport — the two diverge once the keyboard is up, which is what the gap is. The component compensates automatically by tracking `visualViewport`'s `resize`/`scroll` events, keeping the panel's top edge at `offsetTop + translateY` and its height at `visualViewport.height`. This has been checked in a browser with a simulated `visualViewport`, using numbers measured on an iPhone — headless browser automation can't trigger a real iOS keyboard, so that specific path hasn't been confirmed on physical hardware. If you still see the gap, please open an issue with your iOS/Safari version.
+
+**With `autoFocus="input"`, the keyboard doesn't come up.** iOS only raises it for a focus made during a user gesture. The component handles this by focusing an invisible stand-in input during the tap that opened the sheet, so it needs that tap to set `v-model` synchronously — opening from a timer or after an `await` can't raise the keyboard on iOS.
 
 ## Requirements
 

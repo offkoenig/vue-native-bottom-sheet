@@ -48,7 +48,7 @@ function submitInputs() {
 
 /* Live visualViewport readout — for chasing the iOS keyboard-inset formula
    against real device numbers instead of guessing from spec text. */
-const debugViewport = ref({ innerH: 0, vvH: 0, vvOffsetTop: 0, keyboardInset: 0 })
+const debugViewport = ref({ innerH: 0, vvH: 0, vvOffsetTop: 0, panelTop: 0 })
 function updateDebugViewport() {
   if (typeof window === 'undefined') return
   const vv = window.visualViewport
@@ -56,7 +56,7 @@ function updateDebugViewport() {
     innerH: window.innerHeight,
     vvH: vv ? Math.round(vv.height) : window.innerHeight,
     vvOffsetTop: vv ? Math.round(vv.offsetTop) : 0,
-    keyboardInset: vv ? Math.round(window.innerHeight - vv.offsetTop - vv.height) : 0,
+    panelTop: Math.round(document.querySelector('.vbs-panel')?.getBoundingClientRect().top ?? 0),
   }
 }
 onMounted(() => {
@@ -73,13 +73,13 @@ onBeforeUnmount(() => {
 
 /* ---------- Physics playground ---------- */
 const playgroundOpen = ref(false)
-const stiffness = ref(300)
-const damping = ref(32)
+const stiffness = ref(600)
+const damping = ref(42)
 const rubberBand = ref(0.55)
 const threshold = ref(0.5)
 function resetDefaults() {
-  stiffness.value = 300
-  damping.value = 32
+  stiffness.value = 600
+  damping.value = 42
   rubberBand.value = 0.55
   threshold.value = 0.5
 }
@@ -419,7 +419,7 @@ function closeProgrammatic() {
         <div>window.innerHeight: {{ debugViewport.innerH }}</div>
         <div>visualViewport.height: {{ debugViewport.vvH }}</div>
         <div>visualViewport.offsetTop: {{ debugViewport.vvOffsetTop }}</div>
-        <div>keyboardInset (innerHeight − offsetTop − height): {{ debugViewport.keyboardInset }}</div>
+        <div>panel top: {{ debugViewport.panelTop }}</div>
       </div>
       <template #footer>
         <button class="btn btn-block" type="button" @click="submitInputs">{{ t.inputsSubmit }}</button>
