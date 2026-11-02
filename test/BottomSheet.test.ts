@@ -85,6 +85,24 @@ describe('BottomSheet', () => {
     expect(wrapper!.emitted('update:modelValue')![0]).toEqual([false])
   })
 
+  it('caps a content snap point at contentMaxHeight', async () => {
+    const rect = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({ height: 5000 } as DOMRect)
+    wrapper = mount(BottomSheet, {
+      props: { modelValue: true, snapPoints: ['content'], contentMaxHeight: 50 },
+      slots: { default: '<p>tall</p>' },
+    })
+    await vi.waitFor(() => expect(wrapper!.emitted('opened')).toBeTruthy())
+    rect.mockRestore()
+    expect(getPanel()!.style.transform).toBe(`translate3d(0, ${Math.floor(window.innerHeight / 2)}px, 0)`)
+  })
+
+  it('applies panelStyle next to its own inline styles', async () => {
+    wrapper = mount(BottomSheet, { props: { modelValue: true, panelStyle: { background: 'red' } } })
+    await vi.waitFor(() => expect(getPanel()).not.toBeNull())
+    expect(getPanel()!.style.background).toBe('red')
+    expect(getPanel()!.style.height).not.toBe('')
+  })
+
   it('exposes snapToIndex(), which emits snap with the resolved percent', async () => {
     wrapper = mount(BottomSheet, { props: { modelValue: true, snapPoints: [25, 60, 100] } })
     await vi.waitFor(() => expect(wrapper!.emitted('opened')).toBeTruthy())

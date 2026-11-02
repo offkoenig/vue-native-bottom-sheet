@@ -281,7 +281,9 @@ const resolvedSnapPoints = computed<ResolvedSnapPoint[]>(() => {
   const points = props.snapPoints?.length ? props.snapPoints : [100]
   const resolved = points.map((raw): ResolvedSnapPoint => {
     if (raw === 'content') {
-      const height = Math.min(fitContentHeight.value, viewportHeight.value)
+      const maxHeight =
+        props.contentMaxHeight === undefined ? Infinity : (snapBaseHeight.value * props.contentMaxHeight) / 100
+      const height = Math.min(fitContentHeight.value, viewportHeight.value, maxHeight)
       const translate = Math.floor(Math.max(viewportHeight.value - height, 0))
       const percent = viewportHeight.value > 0 ? (height / viewportHeight.value) * 100 : 0
       return { raw, translate, percent }
@@ -802,8 +804,15 @@ watch(snapTranslates, syncToSnapPoints)
  * that much content simply can't be reached by scrolling — on a sheet whose
  * only snap point is 45%, ever. It's sized from the resting position and
  * only changes once the sheet has come to rest, never during motion.
+ *
+ * With a single snap point the sheet never rises past that rest, so the bottom
+ * margin takes the spacer's job and the scroller ends right at the screen edge:
+ * `position: sticky; bottom: 0` in a slot then sticks where it's seen. Several
+ * snap points keep the spacer, since a scroller cut to the current rest would
+ * leave a blank panel below it on the way up: use the `footer` slot there.
  */
 const contentSpacerHeight = ref(0)
+const hasSingleSnapPoint = computed(() => snapTranslates.value.length === 1)
 
 function onSheetRest() {
   const target = snapTranslates.value[currentSnapIndex.value]
@@ -1066,8 +1075,18 @@ function setDragging(dragging: boolean) {
 const INTERACTIVE_SELECTOR =
   'button, a, input, textarea, select, label, summary, [role="button"], [contenteditable="true"], [data-vbs-no-drag]'
 
-function isInteractiveTarget(target: EventTarget | null): boolean {
-  return !!(target as HTMLElement | null)?.closest?.(INTERACTIVE_SELECTOR)
+/**
+ * Touch can afford a narrower list than the mouse: browsers only send a
+ * touchmove once the finger has left the tap slop, and claiming it cancels the
+ * click, so a tap still reaches the control while a swipe drags the sheet. A
+ * list or menu made of buttons and links stays draggable that way, like a
+ * native sheet. What's left owns the movement itself.
+ */
+const TOUCH_NO_DRAG_SELECTOR =
+  'input[type="range"], input:focus, textarea:focus, [contenteditable="true"]:focus, [data-vbs-no-drag]'
+
+function isInteractiveTarget(target: EventTarget | null, isTouch: boolean): boolean {
+  return !!(target as HTMLElement | null)?.closest?.(isTouch ? TOUCH_NO_DRAG_SELECTOR : INTERACTIVE_SELECTOR)
 }
 
 function pushSample(y: number, t: number) {
@@ -1120,7 +1139,7 @@ function beginGesture(target: EventTarget | null, inputId: number, x: number, y:
     beginDrag(y, t)
     return true
   }
-  if (props.grabberOnly || isInteractiveTarget(target)) return false
+  if (props.grabberOnly || isInteractiveTarget(target, isTouch)) return false
   const isContent = !!contentRef.value?.contains(el)
   if (!isContent && !el?.closest?.('.vbs-header-zone')) return false
   activeInputId = inputId
@@ -1560,7 +1579,7 @@ onBeforeUnmount(() => {
         ref="sheetRef"
         class="vbs-panel"
         :class="panelClass"
-        :style="sheetStyle"
+        :style="[panelStyle, sheetStyle]"
         role="dialog"
         aria-modal="true"
         :aria-label="ariaLabel"
@@ -1585,13 +1604,18 @@ onBeforeUnmount(() => {
         </div>
 
         <!-- Scrollable content -->
-        <div ref="contentRef" class="vbs-content" :class="contentClass">
+        <div
+          ref="contentRef"
+          class="vbs-content"
+          :class="contentClass"
+          :style="hasSingleSnapPoint ? { marginBottom: `${contentSpacerHeight}px` } : undefined"
+        >
           <!-- contentInnerRef doesn't stretch along with .vbs-content (flex: 1),
                so its height is the slot's real, undistorted height. -->
           <div ref="contentInnerRef" :class="{ 'vbs-content-inner--no-footer': !$slots.footer }">
             <slot :close="close" />
           </div>
-          <div :style="{ height: `${contentSpacerHeight}px` }" aria-hidden="true" />
+          <div v-if="!hasSingleSnapPoint" :style="{ height: `${contentSpacerHeight}px` }" aria-hidden="true" />
         </div>
 
         <!-- Fixed footer -->

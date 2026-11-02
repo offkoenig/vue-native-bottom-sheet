@@ -137,6 +137,7 @@ If that's not enough, `panelClass` / `contentClass` / `backdropClass` accept any
 | Prop | Type | Default | Description |
 |---|---|---|---|
 | `snapPoints` | `(number \| 'content')[]` | `[50, 100]` | Snap points as % of viewport height. `'content'` measures the actual rendered height of header+default+footer via `ResizeObserver` instead (capped at the visible viewport) and re-springs live if that content changes size while open. Order doesn't matter — sorted automatically, including around a moving `'content'` point. |
+| `contentMaxHeight` | `number` | — | Upper limit for a `'content'` snap point, in % of viewport height. Taller content scrolls inside the sheet instead of growing it further. Unset, it grows to the full visible viewport. |
 | `defaultSnapPoint` | `number` | `0` | Index into the sorted `snapPoints` (least open first) the sheet opens to by default. |
 | `closeThreshold` | `number` | `0.5` | Swipe velocity threshold (px/ms) above which an inertial transition/close kicks in. |
 | `edgeFlickVelocity` | `number` | `1.8` | Swipe velocity (px/ms) above which a flick jumps straight to the edge — fully closed (or the lowest snap point, if not dismissible) on a fast downward flick, or the top-most snap point on a fast upward one — instead of moving one snap point at a time. Must exceed `closeThreshold` to matter; set to `Infinity` to disable. |
@@ -161,6 +162,7 @@ If that's not enough, `panelClass` / `contentClass` / `backdropClass` accept any
 | `ariaLabel` | `string` | `'Panel'` | `aria-label` for the dialog. |
 | `zIndex` | `number` | `60` | Base z-index (backdrop = `zIndex`, panel = `zIndex + 1`). |
 | `panelClass` | `string \| object \| array` | — | Extra classes on the panel's root element. |
+| `panelStyle` | `string \| object` | — | Extra inline styles on the panel's root element, for values only known at runtime (a background that follows the content, say). The panel teleports to `<body>`, so an ancestor's CSS variables can't reach it. |
 | `contentClass` | `string \| object \| array` | — | Extra classes on the scrollable content area. |
 | `backdropClass` | `string \| object \| array` | — | Extra classes on the backdrop. |
 
@@ -313,7 +315,7 @@ Touch goes through touch events with a non-passive `touchmove`, mouse through po
 
 A simpler rule (a 4px movement threshold) applies to the `header` slot's area, so clicks on buttons inside it aren't hijacked by the drag but dragging works both ways. Set `grabberOnly` to skip all of this and only ever start a drag from the grabber bar. Add a `data-vbs-no-drag` attribute to any element in the slots that must never start a drag (a custom slider, say).
 
-Content stays fully reachable at any snap point: the scroller carries a spacer as tall as the part of the panel currently below the screen edge, resized only once the sheet is at rest.
+Content stays fully reachable at any snap point. With a single snap point the scroller ends right at the screen edge, so `position: sticky; bottom: 0` in the default slot sticks where it's seen. With several, it stays a full viewport tall and carries a spacer as tall as the part of the panel currently below the screen edge, resized only once the sheet is at rest; pin things to the bottom with the `footer` slot there.
 
 One consequence worth knowing: with a long scrollable list inside a multi-snap-point sheet, an upward swipe anywhere on it expands the sheet first rather than scrolling — scrolling only takes over once you're resting on the top-most point.
 
@@ -327,7 +329,7 @@ While a drag is in flight, a `vbs-dragging` class is toggled on `<html>` — a h
 - `Escape` closes it (if `closeOnEscape`); with several sheets open, only the top-most one responds.
 - `:inert="!isOpen"` — while the panel is hidden, it's excluded from focus and from screen readers.
 - Respects `prefers-reduced-motion: reduce` — animations become instant.
-- Dragging never starts from underneath interactive elements (`button, a, input, textarea, select, label, summary, [role="button"], [contenteditable="true"], [data-vbs-no-drag]`).
+- On touch, a drag can start on buttons and links too, since a tap still reaches them and a swipe cancels the click. It never starts on `input[type="range"]`, a focused text field, or `[data-vbs-no-drag]`. With a mouse it also never starts on `button, a, input, textarea, select, label, summary, [role="button"], [contenteditable="true"]`.
 
 ## Package architecture
 

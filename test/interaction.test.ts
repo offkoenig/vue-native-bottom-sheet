@@ -142,6 +142,43 @@ describe('BottomSheet interaction', () => {
       expect(w.emitted('drag-start')).toBeUndefined()
     })
 
+    it('drags from buttons and links on touch', async () => {
+      const w = await openAndSettle({}, { default: () => [h('button', { id: 'b' }), h('a', { id: 'l', href: '#' })] })
+      const button = document.querySelector('#b')!
+      fireTouch(button, 'touchstart', { y: 500, t: 0 })
+      expect(fireTouch(button, 'touchmove', { y: 520, t: 16 }).defaultPrevented).toBe(true)
+      expect(w.emitted('drag-start')).toHaveLength(1)
+      fireTouch(button, 'touchend', { y: 520, t: 32 })
+      const link = document.querySelector('#l')!
+      fireTouch(link, 'touchstart', { y: 500, t: 100 })
+      expect(fireTouch(link, 'touchmove', { y: 520, t: 116 }).defaultPrevented).toBe(true)
+      expect(w.emitted('drag-start')).toHaveLength(2)
+    })
+
+    it('leaves range inputs and a focused text input to themselves on touch', async () => {
+      const w = await openAndSettle(
+        {},
+        { default: () => [h('input', { id: 'r', type: 'range' }), h('input', { id: 't', type: 'text' })] },
+      )
+      const range = document.querySelector('#r')!
+      fireTouch(range, 'touchstart', { y: 500, t: 0 })
+      expect(fireTouch(range, 'touchmove', { y: 520, t: 16 }).defaultPrevented).toBe(false)
+      fireTouch(range, 'touchend', { y: 520, t: 32 })
+      const text = document.querySelector<HTMLInputElement>('#t')!
+      text.focus()
+      fireTouch(text, 'touchstart', { y: 500, t: 100 })
+      expect(fireTouch(text, 'touchmove', { y: 520, t: 116 }).defaultPrevented).toBe(false)
+      expect(w.emitted('drag-start')).toBeUndefined()
+    })
+
+    it('does not start a mouse drag from a button', async () => {
+      const w = await openAndSettle({}, { default: () => h('button', { id: 'b' }) })
+      const button = document.querySelector('#b')!
+      firePointer(button, 'pointerdown', 500, 0)
+      firePointer(window, 'pointermove', 540, 16)
+      expect(w.emitted('drag-start')).toBeUndefined()
+    })
+
     it('never starts a drag from a [data-vbs-no-drag] element', async () => {
       const w = await openAndSettle({}, { default: () => h('div', { id: 'slider', 'data-vbs-no-drag': '' }) })
       const slider = document.getElementById('slider')!
@@ -351,9 +388,17 @@ describe('BottomSheet interaction', () => {
     })
 
     it('reserves room to scroll the last of the content into view', async () => {
-      await openAndSettle({ snapPoints: [40] })
+      await openAndSettle({ snapPoints: [40, 100] })
       const spacer = document.querySelector('.vbs-content')!.lastElementChild as HTMLElement
       expect(spacer.style.height).toBe(`${Math.round(window.innerHeight * 0.6)}px`)
+    })
+
+    it('ends the scroller at the screen edge with a single snap point', async () => {
+      await openAndSettle({ snapPoints: [40] }, { default: () => h('p', { id: 'slot' }) })
+      const content = document.querySelector('.vbs-content') as HTMLElement
+      expect(content.style.marginBottom).toBe(`${Math.round(window.innerHeight * 0.6)}px`)
+      // No spacer: the slot's wrapper is all there is
+      expect(content.childElementCount).toBe(1)
     })
   })
 

@@ -19,6 +19,12 @@ export interface BottomSheetProps {
    * re-sorted whenever the measured 'content' height changes).
    */
   snapPoints?: (number | 'content')[]
+  /**
+   * Upper limit for a `'content'` snap point, in % of viewport height. Content
+   * taller than this scrolls inside the sheet instead of growing it further.
+   * Unset (default) lets it grow to the full visible viewport.
+   */
+  contentMaxHeight?: number
   /** Index into the (sorted, least open first) snapPoints the sheet opens to by default. */
   defaultSnapPoint?: number
   /** Swipe velocity threshold (px/ms) above which an inertial transition/close kicks in. */
@@ -115,6 +121,13 @@ export interface BottomSheetProps {
   zIndex?: number
   /** Extra classes on the panel's root element — a way to layer your own (including Tailwind/UnoCSS) classes on top of the built-in styles. */
   panelClass?: ClassValue
+  /**
+   * Extra inline styles on the panel's root element, for values only known at
+   * runtime (a background that follows the content, say). The panel teleports
+   * to `<body>`, so an ancestor's CSS variables can't reach it. `transform` is
+   * owned by the component and gets overwritten.
+   */
+  panelStyle?: string | Record<string, string>
   /** Extra classes on the scrollable content area. */
   contentClass?: ClassValue
   /** Extra classes on the backdrop. */
