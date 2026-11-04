@@ -113,4 +113,28 @@ describe('BottomSheet', () => {
     expect(index).toBe(2)
     expect(percent).toBe(100)
   })
+
+  it("doesn't scroll another sheet to the element a closing sheet hands focus back to", async () => {
+    wrapper = mount(BottomSheet, {
+      props: { modelValue: true, snapPoints: [100] },
+      slots: { default: '<input class="far-field" />' },
+    })
+    await vi.waitFor(() => expect(wrapper!.emitted('opened')).toBeTruthy())
+    const field = document.querySelector<HTMLInputElement>('.far-field')!
+    const content = document.querySelector<HTMLElement>('.vbs-content')!
+    // The field sits far above the scrolled-down part of the list
+    field.getBoundingClientRect = () => ({ top: -900, bottom: -860, left: 0, right: 0, width: 0, height: 40, x: 0, y: -900, toJSON() {} })
+    field.focus()
+    const writes: number[] = []
+    Object.defineProperty(content, 'scrollTop', { configurable: true, get: () => 0, set: (v: number) => writes.push(v) })
+
+    const nested = mount(BottomSheet, { props: { modelValue: true } })
+    await vi.waitFor(() => expect(nested.emitted('opened')).toBeTruthy())
+    await nested.setProps({ modelValue: false })
+    await vi.waitFor(() => expect(nested.emitted('closed')).toBeTruthy())
+
+    expect(document.activeElement).toBe(field)
+    expect(writes).toEqual([])
+    nested.unmount()
+  })
 })

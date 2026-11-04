@@ -131,6 +131,14 @@ function releaseTargetLock(el: HTMLElement) {
 
 /** Open sheets, oldest first — only the last one answers Escape and traps Tab. */
 const openSheetStack: object[] = []
+
+/**
+ * True while a closing sheet hands focus back to where it was before it
+ * opened. That element can sit in another sheet's content, scrolled far out
+ * of view (a field at the top of a long list that opened a nested sheet
+ * from below): it must get focus back without dragging that list to it.
+ */
+let restoringFocus = false
 </script>
 
 <script setup lang="ts">
@@ -812,6 +820,24 @@ watch(snapTranslates, syncToSnapPoints)
  * leave a blank panel below it on the way up: use the `footer` slot there.
  */
 const contentSpacerHeight = ref(0)
+
+/**
+ * What revealFocusedInContent keeps in view: an element focused inside the
+ * panel by the user (or by autoFocus), not one that got focus back from a
+ * closing sheet — see restoringFocus. Remembered rather than read from
+ * document.activeElement each time, so a later resize (the keyboard, iOS
+ * Safari's toolbar) doesn't scroll to a restored element either.
+ */
+let revealTarget: HTMLElement | null = null
+
+function onPanelFocusIn(e: FocusEvent) {
+  revealTarget = restoringFocus ? null : (e.target as HTMLElement)
+  revealFocusedInContent()
+}
+
+function onPanelFocusOut(e: FocusEvent) {
+  if (e.target === revealTarget) revealTarget = null
+}
 const hasSingleSnapPoint = computed(() => snapTranslates.value.length === 1)
 
 function onSheetRest() {
@@ -827,7 +853,8 @@ function onSheetRest() {
  * or covered by the transform-shifted footer.
  */
 function revealFocusedInContent() {
-  const el = document.activeElement as HTMLElement | null
+  const el = revealTarget
+  if (el !== document.activeElement) return
   const scroller = contentRef.value
   const sheet = sheetRef.value
   if (!el || !sheet || !scroller || el === scroller || !scroller.contains(el)) return
@@ -957,7 +984,14 @@ function finishClose() {
   detachOpenListeners()
   releaseKeyboardProxy()
   emit('closed')
-  previouslyFocused?.focus?.({ preventScroll: true })
+  revealTarget = null
+  // focusin fires synchronously inside focus(), so the flag covers it
+  restoringFocus = true
+  try {
+    previouslyFocused?.focus?.({ preventScroll: true })
+  } finally {
+    restoringFocus = false
+  }
 }
 
 /** Internal version: used when closing from a gesture, to pass the flick's velocity into the animation. */
@@ -1586,7 +1620,8 @@ onBeforeUnmount(() => {
         :inert="!isOpen"
         tabindex="-1"
         @scroll="onPanelScroll"
-        @focusin="revealFocusedInContent"
+        @focusin="onPanelFocusIn"
+        @focusout="onPanelFocusOut"
         @pointerdown="onPanelPointerDown"
         @touchstart.passive="onTouchStart"
         @touchmove="onTouchMove"
