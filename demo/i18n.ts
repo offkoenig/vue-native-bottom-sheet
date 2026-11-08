@@ -18,7 +18,7 @@ const messages = {
     tryIt: 'Try every example on a touch device for the full effect — mouse drag works too.',
 
     examplesKicker: 'Examples',
-    examplesTitle: 'Seven ways to configure it',
+    examplesTitle: 'Eight ways to configure it',
 
     basicTitle: 'Basic',
     basicDesc: 'Default snap points [50, 100]. Flick down fast enough and it closes even from a small drag.',
@@ -91,6 +91,15 @@ const messages = {
     inputsMessagePlaceholder: 'Tap here and the keyboard should push the sheet up cleanly, no matter which snap point it started on…',
     inputsSubmit: 'Send',
 
+    nestedTitle: 'Nested sheets',
+    nestedDesc: 'A sheet that opens another sheet from its own slot — as deep as you like. Each new one lands on top, the dimming never piles up, Escape unwinds one level at a time.',
+    nestedOpen: 'Open level 1',
+    nestedHeader: 'Level {n}',
+    nestedLevel: 'Sheet #{n}',
+    nestedLevelHint: 'Nested inside the previous sheet’s slot',
+    nestedBody: 'Open the next level, then drag it down slowly: the sheet underneath brightens exactly as much as the top one fades, so the page never gets darker than under a single sheet. Closing a level also closes every sheet opened from it, and focus goes back to the button that opened it.',
+    nestedOpenNext: 'Open level {n}',
+
     playgroundKicker: 'Playground',
     playgroundTitle: 'Feel the physics change live',
     playgroundDesc:
@@ -128,7 +137,7 @@ const messages = {
     tryIt: 'Для полного эффекта пробуйте на тач-устройстве — но и мышью тоже работает.',
 
     examplesKicker: 'Примеры',
-    examplesTitle: 'Семь вариантов настройки',
+    examplesTitle: 'Восемь вариантов настройки',
 
     basicTitle: 'Базовый',
     basicDesc: 'Точки прилипания [50, 100] по умолчанию. Быстрый свайп вниз закрывает даже при небольшом протягивании.',
@@ -200,6 +209,15 @@ const messages = {
     inputsMessageLabel: 'Сообщение',
     inputsMessagePlaceholder: 'Тапните сюда — клавиатура должна аккуратно поднять шторку, с какой бы точки она ни начинала…',
     inputsSubmit: 'Отправить',
+
+    nestedTitle: 'Вложенные шторки',
+    nestedDesc: 'Шторка открывает другую шторку прямо из своего слота — на любую глубину. Каждая новая ложится сверху, затемнение не копится, Escape закрывает по одному уровню.',
+    nestedOpen: 'Открыть уровень 1',
+    nestedHeader: 'Уровень {n}',
+    nestedLevel: 'Шторка №{n}',
+    nestedLevelHint: 'Вложена в слот предыдущей шторки',
+    nestedBody: 'Откройте следующий уровень и медленно потяните его вниз: нижняя шторка светлеет ровно настолько, насколько гаснет верхняя, так что страница никогда не темнее, чем под одной шторкой. Закрытие уровня закрывает и все шторки, открытые из него, а фокус возвращается на кнопку, которая его открыла.',
+    nestedOpenNext: 'Открыть уровень {n}',
 
     playgroundKicker: 'Плейграунд',
     playgroundTitle: 'Почувствуйте физику вживую',

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import BottomSheet from '../src/BottomSheet.vue'
+import NestedSheet from './NestedSheet.vue'
 import { t, lang, toggleLang } from './i18n'
 
 /* ---------- Basic ---------- */
@@ -37,6 +38,14 @@ function removeFitItem() {
 const peekOpen = ref(false)
 const peekScaleBg = ref(true)
 const peekGrabberOnly = ref(false)
+
+/* ---------- Nested sheets ---------- */
+const nestedOpen = ref(false)
+const nestedMounted = ref(false)
+function openNested() {
+  nestedMounted.value = true
+  nestedOpen.value = true
+}
 
 /* ---------- Inputs & keyboard ---------- */
 const inputsOpen = ref(false)
@@ -178,6 +187,12 @@ function closeProgrammatic() {
             <h3>{{ t.inputsTitle }}</h3>
             <p>{{ t.inputsDesc }}</p>
             <button class="btn" type="button" @click="inputsOpen = true">{{ t.inputsOpen }}</button>
+          </article>
+
+          <article class="card">
+            <h3>{{ t.nestedTitle }}</h3>
+            <p>{{ t.nestedDesc }}</p>
+            <button class="btn" type="button" @click="openNested">{{ t.nestedOpen }}</button>
           </article>
         </div>
       </section>
@@ -425,6 +440,8 @@ function closeProgrammatic() {
         <button class="btn btn-block" type="button" @click="submitInputs">{{ t.inputsSubmit }}</button>
       </template>
     </BottomSheet>
+
+    <NestedSheet v-if="nestedMounted" v-model="nestedOpen" :depth="1" />
 
     <BottomSheet
       v-model="playgroundOpen"
