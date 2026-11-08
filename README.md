@@ -160,7 +160,7 @@ If that's not enough, `panelClass` / `contentClass` / `backdropClass` accept any
 | `scaleBackground` | `boolean` | `false` | Scales down and rounds the corners of the visible part of your app's background while the sheet is open — the iOS "card stack" look. Requires an element elsewhere in the DOM marked `data-vbs-background` (a sibling of where `BottomSheet` teleports to, not an ancestor); a no-op without one. See [Background scale effect](#background-scale-effect). |
 | `scaleBackgroundColor` | `string` | `'#000000'` | Color painted behind the scaled-down background, filling the gap its rounded corners reveal, while `scaleBackground` is active. |
 | `ariaLabel` | `string` | `'Panel'` | `aria-label` for the dialog. |
-| `zIndex` | `number` | `60` | Base z-index (backdrop = `zIndex`, panel = `zIndex + 1`). |
+| `zIndex` | `number` | `60` | Base z-index (backdrop = `zIndex`, panel = `zIndex + 1`). Raised automatically while needed to stay above sheets already open — see [Nested sheets](#nested-sheets). |
 | `panelClass` | `string \| object \| array` | — | Extra classes on the panel's root element. |
 | `panelStyle` | `string \| object` | — | Extra inline styles on the panel's root element, for values only known at runtime (a background that follows the content, say). The panel teleports to `<body>`, so an ancestor's CSS variables can't reach it. |
 | `contentClass` | `string \| object \| array` | — | Extra classes on the scrollable content area. |
@@ -198,6 +198,24 @@ Under the hood, `header` + default slot + `footer` are measured with a `ResizeOb
 Unlike a typical implementation of this effect (a fixed-duration CSS transition fired at open/close), the scale here is driven by the exact same live `translateY` the sheet and backdrop already use, applied imperatively to that element — so it tracks drag, rubber-band, and the spring settle frame-for-frame instead of running on its own separate timing curve. Only the transform animates: the corners are a `clip-path` set once at a constant radius when the scale engages, because animating the radius would repaint your whole app on every frame. If no `data-vbs-background` element exists, this is a silent no-op.
 
 If `fadeFromIndex` is also set, the background scale shares its progress with the backdrop — it stays untouched below that snap point and only starts scaling/tinting once you cross into it, so a "peek" state doesn't visually change the background any more than it dims it.
+
+### Nested sheets
+
+Sheets can be opened on top of each other to any depth — from inside another sheet's slot, or declared anywhere else on the page:
+
+```vue
+<BottomSheet v-model="isListOpen">
+  <button @click="isDetailsOpen = true">Details</button>
+  <BottomSheet v-model="isDetailsOpen">…</BottomSheet>
+</BottomSheet>
+```
+
+- **The newest sheet is always on top.** An opening sheet raises its z-index above every sheet still on screen, so the order sheets are declared in, or a lower sheet being reopened, doesn't matter. Once they're all closed, each is back to its own `zIndex`.
+- **Only the top sheet** answers Escape and traps Tab; each Escape closes one level.
+- **Focus goes back down the chain**: closing a sheet returns focus to whatever opened it. If that was inside a sheet that has closed since, focus goes to what opened *that* one instead.
+- **A sheet nested in another's slot closes with it** (it emits `update:modelValue(false)`), the way a native sheet is dismissed with the one presenting it. A sheet declared outside the other one's slot stays open independently.
+- The body scroll lock, `themeColor` and `scaleBackground` are shared across sheets and only released when the last one using them closes, in any order.
+- **Dimming doesn't add up with depth.** As on iOS, the page stays as dim as under a single sheet, and the sheet underneath gets dimmed by the backdrop of the one above it. While the top sheet is dragged or animates, the lower backdrop fades out by exactly as much as the upper one fades in, so the page's dimming never dips or jumps. If the lower sheet's own `backdropOpacity` is the higher one, the page keeps that darker value.
 
 ## Events (Emits)
 

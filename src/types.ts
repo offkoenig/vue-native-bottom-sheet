@@ -117,7 +117,11 @@ export interface BottomSheetProps {
   scaleBackgroundColor?: string
   /** aria-label for the dialog. */
   ariaLabel?: string
-  /** Base z-index (backdrop = zIndex, the panel itself = zIndex + 1). */
+  /**
+   * Base z-index (backdrop = zIndex, the panel itself = zIndex + 1). While
+   * other sheets are on screen, an opening sheet raises it as far as needed
+   * to land above all of them.
+   */
   zIndex?: number
   /** Extra classes on the panel's root element — a way to layer your own (including Tailwind/UnoCSS) classes on top of the built-in styles. */
   panelClass?: ClassValue
@@ -151,6 +155,11 @@ export interface BottomSheetEmits {
 export interface BottomSheetExposed {
   /** Close programmatically (equivalent to v-model = false, but with no arguments — safe for @click). */
   close: () => void
-  /** Spring to a snap point by index (into the sorted snapPoints), without closing or reopening. */
+  /**
+   * Spring to a snap point by index (into the sorted snapPoints), without
+   * closing or reopening. Called while the sheet is closed (or in the same
+   * tick as opening it), the next open goes to that index instead of
+   * `defaultSnapPoint`.
+   */
   snapToIndex: (index: number) => void
 }

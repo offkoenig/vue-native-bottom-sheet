@@ -1,4 +1,6 @@
 <script lang="ts">
+import type { InjectionKey, Ref } from 'vue'
+
 /* ════════════════════════════════════════════════════════════════════ *
  *  State shared by every BottomSheet on the page. Each of these resources
  *  (<body>'s lock, a scroll target's lock, "who answers Escape/Tab") has
@@ -76,7 +78,14 @@ function releaseBodyLock() {
   // 'instant', not the default 'auto': under a consumer's
   // `html { scroll-behavior: smooth }`, 'auto' would visibly glide the
   // page back from the top every time a sheet closes.
-  window.scrollTo({ left: savedScrollX, top: savedScrollY, behavior: 'instant' })
+  try {
+    window.scrollTo({ left: savedScrollX, top: savedScrollY, behavior: 'instant' })
+  } catch {
+    // An engine whose ScrollBehavior enum predates 'instant' rejects the
+    // whole options object with a TypeError — which, thrown from here,
+    // would abort the rest of the close sequence ('closed', focus restore).
+    window.scrollTo(savedScrollX, savedScrollY)
+  }
 }
 
 interface TargetLock {
@@ -129,8 +138,245 @@ function releaseTargetLock(el: HTMLElement) {
   targetLocks.delete(el)
 }
 
+/**
+ * `<meta name="theme-color">` is page-wide too. Each sheet with a themeColor
+ * holds a claim; the newest claim wins, and the page's own values come back
+ * only once the last claim is gone — whatever order the sheets close in.
+ * Per-instance save/restore had the same failure as the body lock: closing
+ * the outer sheet first left the inner one's "saved" color stuck for good.
+ */
+interface ThemeColorClaim {
+  color: string
+}
+const themeColorClaims: ThemeColorClaim[] = []
+/** The page's own theme-color tags and their content before the first claim; `created` is the tag added when there was none. */
+let savedThemeColors: { el: HTMLMetaElement; content: string | null }[] = []
+let createdThemeColorMeta: HTMLMetaElement | null = null
+
+function writeThemeColor() {
+  const top = themeColorClaims[themeColorClaims.length - 1]
+  if (top) {
+    // Every tag, not just the first: a page with separate light/dark tags
+    // (`media="(prefers-color-scheme: dark)"`) would otherwise only get the
+    // color in one of the two schemes.
+    for (const { el } of savedThemeColors) el.setAttribute('content', top.color)
+    createdThemeColorMeta?.setAttribute('content', top.color)
+    return
+  }
+  for (const { el, content } of savedThemeColors) {
+    if (content === null) el.removeAttribute('content')
+    else el.setAttribute('content', content)
+  }
+  createdThemeColorMeta?.remove()
+  savedThemeColors = []
+  createdThemeColorMeta = null
+}
+
+function claimThemeColor(claim: ThemeColorClaim) {
+  if (themeColorClaims.length === 0) {
+    const metas = Array.from(document.querySelectorAll<HTMLMetaElement>('meta[name="theme-color"]'))
+    savedThemeColors = metas.map((el) => ({ el, content: el.getAttribute('content') }))
+    if (metas.length === 0) {
+      createdThemeColorMeta = document.createElement('meta')
+      createdThemeColorMeta.setAttribute('name', 'theme-color')
+      document.head.appendChild(createdThemeColorMeta)
+    }
+  }
+  themeColorClaims.push(claim)
+  writeThemeColor()
+}
+
+function releaseThemeColor(claim: ThemeColorClaim) {
+  const index = themeColorClaims.indexOf(claim)
+  if (index === -1) return
+  themeColorClaims.splice(index, 1)
+  writeThemeColor()
+}
+
+/**
+ * The `[data-vbs-background]` element is page-wide as well, and two sheets
+ * scaling it each on their own corrupted it: the second one measured the
+ * already-scaled element for its clip and origin, saved the first one's
+ * transform as "original", and whichever closed first un-scaled the page
+ * from under the other. Now the element is set up once, by the first claim,
+ * and shows the most-open claim's progress — an inner sheet rising over a
+ * fully open outer one keeps the page scaled instead of resetting it, and
+ * the page's own styles come back only with the last claim.
+ */
+const SCALE_BACKGROUND_WIDTH_INSET = 26 // px "shrink" of the background at full openness — matches iOS's own card-stack proportions
+const SCALE_BACKGROUND_RADIUS = 8 // px corner radius at full openness
+const SCALE_BACKGROUND_TOP_GAP = 14 // px the background peeks down by at full openness
+
+interface ScaleBackgroundClaim {
+  /** 0..1, the claiming sheet's current dim progress. */
+  progress: number
+  /** The claiming sheet's viewport width, which the scale factor is computed from. */
+  width: number
+  /** Painted behind the scaled background while this claim drives it. */
+  color: string
+}
+
+interface ScaleBackgroundState {
+  el: HTMLElement
+  saved: { transform: string; clipPath: string; transformOrigin: string; willChange: string }
+  savedBodyBackground: string
+  clip: string
+  /** The body background currently written, or null while not engaged — so the clip and body background are only written on an actual change, not on every frame. */
+  appliedColor: string | null
+}
+
+let scaleBackgroundState: ScaleBackgroundState | null = null
+const scaleBackgroundClaims: ScaleBackgroundClaim[] = []
+
+/** Returns false (and claims nothing) when the page has no `[data-vbs-background]` element. */
+function claimScaleBackground(claim: ScaleBackgroundClaim, viewportHeight: number): boolean {
+  if (!scaleBackgroundState) {
+    const el = document.querySelector<HTMLElement>('[data-vbs-background]')
+    if (!el) return false
+    const saved = {
+      transform: el.style.transform,
+      clipPath: el.style.clipPath,
+      transformOrigin: el.style.transformOrigin,
+      willChange: el.style.willChange,
+    }
+    // The scroll lock has already pinned the page, so this rect stays valid
+    // for as long as any claim is held. The element usually extends well
+    // past the screen: the origin and clip have to follow the part that's
+    // in view, or scaling a scrolled page drags it upward by scrollY·(1 − scale).
+    const rect = el.getBoundingClientRect()
+    const visibleTop = Math.max(-rect.top, 0)
+    const hiddenBelow = Math.max(rect.bottom - viewportHeight, 0)
+    el.style.transformOrigin = `50% ${visibleTop}px`
+    el.style.willChange = 'transform'
+    scaleBackgroundState = {
+      el,
+      saved,
+      savedBodyBackground: document.body.style.background,
+      clip: `inset(${visibleTop}px 0 ${hiddenBelow}px 0 round ${SCALE_BACKGROUND_RADIUS}px)`,
+      appliedColor: null,
+    }
+  }
+  scaleBackgroundClaims.push(claim)
+  return true
+}
+
+/** Writes the most-open claim's state to the element — called from a claiming sheet's renderFrame(), so only `transform` changes per frame. */
+function renderScaleBackground() {
+  const state = scaleBackgroundState
+  if (!state) return
+  let driver: ScaleBackgroundClaim | null = null
+  // `>=`: on a tie the newest claim wins, and with it its color.
+  for (const claim of scaleBackgroundClaims) if (!driver || claim.progress >= driver.progress) driver = claim
+  const progress = driver?.progress ?? 0
+  const width = driver?.width ?? 0
+  const scaleTarget = width > 0 ? (width - SCALE_BACKGROUND_WIDTH_INSET) / width : 1
+  const scale = 1 - (1 - scaleTarget) * progress
+  const topGap = SCALE_BACKGROUND_TOP_GAP * progress
+  state.el.style.transform = `scale(${scale}) translate3d(0, calc(env(safe-area-inset-top, 0px) * ${progress} + ${topGap.toFixed(2)}px), 0)`
+  // Only once there's a real gap to fill (progress > 0), so a "peek"
+  // position (dim progress still 0) never touches these at all.
+  const color = driver && progress > 0.001 ? driver.color : null
+  if (color !== state.appliedColor) {
+    if ((color === null) !== (state.appliedColor === null)) {
+      state.el.style.clipPath = color === null ? state.saved.clipPath : state.clip
+    }
+    state.appliedColor = color
+    document.body.style.background = color ?? state.savedBodyBackground
+  }
+}
+
+function releaseScaleBackground(claim: ScaleBackgroundClaim) {
+  const index = scaleBackgroundClaims.indexOf(claim)
+  if (index === -1) return
+  scaleBackgroundClaims.splice(index, 1)
+  const state = scaleBackgroundState
+  if (!state) return
+  if (scaleBackgroundClaims.length > 0) {
+    renderScaleBackground()
+    return
+  }
+  scaleBackgroundState = null
+  state.el.style.transform = state.saved.transform
+  state.el.style.clipPath = state.saved.clipPath
+  state.el.style.transformOrigin = state.saved.transformOrigin
+  state.el.style.willChange = state.saved.willChange
+  document.body.style.background = state.savedBodyBackground
+}
+
+/** What one sheet instance lets the others see of it. */
+interface SheetEntry {
+  /** The panel's z-index while it's in the DOM (open or closing), null otherwise. */
+  panelZIndex(): number | null
+  /** Where this sheet hands focus back to when it closes. */
+  restoreTarget: HTMLElement | null
+  /** What this sheet's backdrop would show on its own (dim progress × backdropOpacity), or null without a backdrop. */
+  ownBackdropOpacity: number | null
+  /** Writes the opacity renderBackdrops() settled on to this sheet's backdrop. */
+  applyBackdropOpacity(opacity: number): void
+}
+
+/** Every mounted sheet, open or not. */
+const mountedSheets = new Set<SheetEntry>()
+
 /** Open sheets, oldest first — only the last one answers Escape and traps Tab. */
-const openSheetStack: object[] = []
+const openSheetStack: SheetEntry[] = []
+
+/**
+ * The z-index a sheet opening now must start from to land above every sheet
+ * still on screen. All sheets share one default zIndex, and a Teleport puts
+ * its content at the spot in <body> its component reserved when IT mounted —
+ * so with equal z-indexes, a sheet declared before another (or a lower one
+ * reopened over an upper one) was painted underneath the sheet it had just
+ * opened over. Derived from what's actually on screen, so it doesn't creep
+ * upward over a session: it's back to each sheet's own zIndex once they're
+ * all closed.
+ */
+function stackZIndexFloor(self: SheetEntry): number {
+  let floor = -Infinity
+  for (const sheet of mountedSheets) {
+    if (sheet === self) continue
+    const z = sheet.panelZIndex()
+    if (z !== null && z + 1 > floor) floor = z + 1
+  }
+  return floor
+}
+
+/**
+ * Stacked sheets don't stack their dimming. Each backdrop covers the whole
+ * page, so N of them at 0.45 used to multiply into near-black a few levels
+ * deep. Like iOS, the page stays dimmed as much as under a single sheet,
+ * while a covered sheet gets dimmed by the backdrop above it.
+ *
+ * Walking down from the top: `cover` is how much light the backdrops above
+ * still let through. A backdrop that would show `own` alone shows
+ *   effective = 1 − (1 − own) / cover
+ * so the page under both reads exactly `own` — throughout the transition,
+ * not only at rest: as the upper backdrop fades in, the lower one fades out
+ * by just as much, with no dip or jump in between. Once the upper one is
+ * darker than `own` already, the lower one is fully transparent.
+ *
+ * Called from every sheet's renderFrame(): the sheets underneath are at rest
+ * and run no frames of their own, yet their backdrops have to follow the
+ * moving one. Only style writes, and only on change.
+ */
+function renderBackdrops() {
+  const visible: { sheet: SheetEntry; z: number }[] = []
+  for (const sheet of mountedSheets) {
+    const z = sheet.panelZIndex()
+    if (z !== null && sheet.ownBackdropOpacity !== null) visible.push({ sheet, z })
+  }
+  visible.sort((a, b) => b.z - a.z)
+  let cover = 1
+  for (const { sheet } of visible) {
+    const own = sheet.ownBackdropOpacity as number
+    const effective = cover >= 1 ? own : cover <= 0 ? 0 : Math.min(Math.max(1 - (1 - own) / cover, 0), 1)
+    sheet.applyBackdropOpacity(effective)
+    cover *= 1 - effective
+  }
+}
+
+/** Provided by every sheet to the sheets nested in its slots: whether it is open. */
+const PARENT_SHEET_OPEN: InjectionKey<Ref<boolean>> = Symbol('vbs-parent-sheet-open')
 
 /**
  * True while a closing sheet hands focus back to where it was before it
@@ -167,7 +413,7 @@ let restoringFocus = false
  *     the same formula WebKit/UIScrollView itself uses for overscroll
  *     (constant 0.55).
  */
-import { ref, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue'
+import { ref, computed, watch, onMounted, onBeforeUnmount, nextTick, provide, inject } from 'vue'
 import type { BottomSheetProps, BottomSheetEmits, BottomSheetExposed } from './types'
 
 /* A universal, framework-agnostic client check. SSR-safe: `typeof window`
@@ -286,7 +532,10 @@ interface ResolvedSnapPoint {
  * overtakes or falls behind a neighboring fixed point.
  */
 const resolvedSnapPoints = computed<ResolvedSnapPoint[]>(() => {
-  const points = props.snapPoints?.length ? props.snapPoints : [100]
+  // A NaN or Infinity entry (a computed value gone wrong upstream) is
+  // dropped rather than turned into a NaN transform.
+  const valid = (props.snapPoints ?? []).filter((p) => p === 'content' || Number.isFinite(p))
+  const points = valid.length ? valid : [100]
   const resolved = points.map((raw): ResolvedSnapPoint => {
     if (raw === 'content') {
       const maxHeight =
@@ -302,9 +551,7 @@ const resolvedSnapPoints = computed<ResolvedSnapPoint[]>(() => {
   return resolved.sort((a, b) => a.percent - b.percent)
 })
 
-const clampedDefaultIndex = computed(() =>
-  Math.min(Math.max(props.defaultSnapPoint, 0), resolvedSnapPoints.value.length - 1),
-)
+const clampedDefaultIndex = computed(() => toIndex(props.defaultSnapPoint, resolvedSnapPoints.value.length))
 
 const snapTranslates = computed(() => resolvedSnapPoints.value.map((r) => r.translate))
 /** translateY of the fully-open point — the upper bound past which rubber-band kicks in. */
@@ -321,9 +568,23 @@ const currentSnapIndex = ref(0)
 let translateY = 0
 let isDragging = false
 
+/** Input types that never bring up an on-screen keyboard. */
+const NON_TEXT_INPUT_TYPES = /^(button|checkbox|color|file|hidden|image|radio|range|reset|submit)$/i
+
+/** Whether what has focus is something an on-screen keyboard could be up for. */
 function isEditableFocused(): boolean {
   const el = document.activeElement as HTMLElement | null
-  return !!el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName))
+  if (!el) return false
+  if (el.isContentEditable || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT') return true
+  // A focused checkbox isn't a keyboard: a browser toolbar collapsing while
+  // one has focus is a real viewport change and must move the snap base.
+  return el.tagName === 'INPUT' && !NON_TEXT_INPUT_TYPES.test((el as HTMLInputElement).type)
+}
+
+/** A prop meant as an index, made into a usable one — `snapTranslates[1.5]` or `[NaN]` is `undefined`, and that would end up as a NaN transform. */
+function toIndex(value: number | undefined, length: number): number {
+  const n = Number.isFinite(value) ? Math.round(value as number) : 0
+  return Math.min(Math.max(n, 0), Math.max(length - 1, 0))
 }
 
 function updateViewportHeight() {
@@ -375,12 +636,11 @@ function renderFrame() {
 
   const progress = computeDimProgress()
   const backdrop = backdropRef.value
+  stackEntry.ownBackdropOpacity = backdrop ? progress * props.backdropOpacity : null
+  // Not written directly: with sheets stacked, what each backdrop shows
+  // depends on the ones above it (see renderBackdrops).
+  renderBackdrops()
   if (backdrop) {
-    const opacity = progress * props.backdropOpacity
-    if (opacity !== lastBackdropOpacity) {
-      lastBackdropOpacity = opacity
-      backdrop.style.opacity = String(opacity)
-    }
     // "Below fadeFromIndex shows no backdrop at all" has to hold for touches
     // too — an invisible full-screen layer that swallows taps isn't a peek.
     // Same for a sheet on its way out: the page is usable again right away.
@@ -390,9 +650,12 @@ function renderFrame() {
       backdrop.style.pointerEvents = passThrough ? 'none' : ''
     }
   }
-  if (isScaleBackgroundApplied && progress !== lastScaleProgress) {
+  const claim = scaleBackgroundClaim
+  if (claim && (progress !== lastScaleProgress || claim.width !== viewportWidth)) {
     lastScaleProgress = progress
-    renderScaleBackground(progress)
+    claim.progress = progress
+    claim.width = viewportWidth
+    renderScaleBackground()
   }
 }
 
@@ -460,9 +723,11 @@ function springAnimateTo(target: number, initialVelocity: number, onDone?: () =>
   springOnDone = onDone
   springPosition = translateY
   // px/ms → px/s, clamped against anomalous velocity spikes
-  springVelocity = Math.max(Math.min(initialVelocity, 6), -6) * 1000
+  springVelocity = Number.isFinite(initialVelocity) ? Math.max(Math.min(initialVelocity, 6), -6) * 1000 : 0
 
-  const { springStiffness: k, springDamping: c, springMass: m } = props
+  const { springStiffness: k, springDamping: c } = props
+  // A zero or negative mass divides the acceleration into Infinity/NaN.
+  const m = props.springMass > 0 ? props.springMass : 1
   let accumulator = 0
   let lastTime = 0
   let startupFrames = 2
@@ -492,7 +757,11 @@ function springAnimateTo(target: number, initialVelocity: number, onDone?: () =>
     const atRest = Math.abs(springVelocity) < 6 && Math.abs(springPosition - springTarget) < 0.5
     // The panel is out of sight the moment it reaches the bottom edge.
     const pastClosed = !isOpen.value && springPosition >= closedTranslate.value - 0.5
-    if (atRest || pastClosed) {
+    // A spring configuration that diverges (a stiffness/damping far outside
+    // anything sensible) would otherwise never be "at rest" and keep a rAF
+    // loop running forever: land on the target instead.
+    const diverged = !Number.isFinite(springPosition) || !Number.isFinite(springVelocity)
+    if (atRest || pastClosed || diverged) {
       translateY = springTarget
       renderFrame()
       rafId = null
@@ -550,45 +819,35 @@ function unlockScroll() {
  *  theme-color sync (opt-in via the themeColor prop)
  * ════════════════════════════════════════════════════════════════════ */
 
-let isThemeColorApplied = false
-let savedThemeColorMeta: { existed: boolean; content: string } | null = null
-
-function getThemeColorMeta(): HTMLMetaElement | null {
-  return document.querySelector<HTMLMetaElement>('meta[name="theme-color"]')
-}
+/** This instance's claim on the page-wide theme-color (see claimThemeColor), held from open until the close animation ends. */
+let themeColorClaim: ThemeColorClaim | null = null
 
 function applyThemeColor() {
-  if (!isClient || !props.themeColor || isThemeColorApplied) return
-  isThemeColorApplied = true
-  let meta = getThemeColorMeta()
-  if (meta) {
-    savedThemeColorMeta = { existed: true, content: meta.getAttribute('content') ?? '' }
-  } else {
-    meta = document.createElement('meta')
-    meta.setAttribute('name', 'theme-color')
-    document.head.appendChild(meta)
-    savedThemeColorMeta = { existed: false, content: '' }
-  }
-  meta.setAttribute('content', props.themeColor)
+  if (!isClient || !props.themeColor || themeColorClaim) return
+  themeColorClaim = { color: props.themeColor }
+  claimThemeColor(themeColorClaim)
 }
 
 function restoreThemeColor() {
-  if (!isClient || !isThemeColorApplied) return
-  isThemeColorApplied = false
-  const meta = getThemeColorMeta()
-  if (meta && savedThemeColorMeta) {
-    if (savedThemeColorMeta.existed) meta.setAttribute('content', savedThemeColorMeta.content)
-    else meta.remove()
-  }
-  savedThemeColorMeta = null
+  if (!isClient || !themeColorClaim) return
+  releaseThemeColor(themeColorClaim)
+  themeColorClaim = null
 }
 
-/** Live-updates the tag's content if themeColor changes while the sheet is already open — doesn't touch savedThemeColorMeta, which must keep holding the pre-open value for a correct restore on close. */
+/** Follows a themeColor changed while the sheet is open; the page's own values stay saved for the restore. */
 watch(
   () => props.themeColor,
   (color) => {
-    if (!isThemeColorApplied || !color) return
-    getThemeColorMeta()?.setAttribute('content', color)
+    if (!themeColorClaim) {
+      if (color && isOpen.value && isInDom.value) applyThemeColor()
+      return
+    }
+    if (!color) {
+      restoreThemeColor()
+      return
+    }
+    themeColorClaim.color = color
+    writeThemeColor()
   },
 )
 
@@ -608,78 +867,31 @@ watch(
  *  can see — the clip is cut to the part that's actually in view.
  * ════════════════════════════════════════════════════════════════════ */
 
-const SCALE_BACKGROUND_WIDTH_INSET = 26 // px "shrink" of the background at full openness — matches iOS's own card-stack proportions
-const SCALE_BACKGROUND_RADIUS = 8 // px corner radius at full openness
-const SCALE_BACKGROUND_TOP_GAP = 14 // px the background peeks down by at full openness
-
-let scaleBackgroundEl: HTMLElement | null = null
-let savedScaleBackgroundStyle: { transform: string; clipPath: string; transformOrigin: string; willChange: string } | null = null
-let isScaleBackgroundApplied = false
-let savedBodyBackground: string | null = null
-let scaleBackgroundClip = ''
-/** Tracks whether the background is currently clipped and body's background swapped to scaleBackgroundColor, so renderScaleBackground() only writes those on an actual on/off transition — not on every frame the scale animates through. */
-let isScaleBackgroundEngaged = false
+/** This instance's claim on the page-wide background scale (see claimScaleBackground), held from open until the close animation ends. */
+let scaleBackgroundClaim: ScaleBackgroundClaim | null = null
 
 function applyScaleBackground() {
-  if (!isClient || !props.scaleBackground || isScaleBackgroundApplied) return
-  const el = document.querySelector<HTMLElement>('[data-vbs-background]')
-  if (!el) return
-  scaleBackgroundEl = el
-  isScaleBackgroundApplied = true
-  savedScaleBackgroundStyle = {
-    transform: el.style.transform,
-    clipPath: el.style.clipPath,
-    transformOrigin: el.style.transformOrigin,
-    willChange: el.style.willChange,
-  }
-  // lockScroll() has already pinned the page, so this rect stays valid for
-  // as long as the sheet is open. The element usually extends well past the
-  // screen: the origin and clip have to follow the part that's in view, or
-  // scaling a scrolled page drags it upward by scrollY·(1 − scale).
-  const rect = el.getBoundingClientRect()
-  const visibleTop = Math.max(-rect.top, 0)
-  const hiddenBelow = Math.max(rect.bottom - viewportHeight.value, 0)
-  el.style.transformOrigin = `50% ${visibleTop}px`
-  el.style.willChange = 'transform'
-  scaleBackgroundClip = `inset(${visibleTop}px 0 ${hiddenBelow}px 0 round ${SCALE_BACKGROUND_RADIUS}px)`
-  savedBodyBackground = document.body.style.background
+  if (!isClient || !props.scaleBackground || scaleBackgroundClaim) return
+  const claim: ScaleBackgroundClaim = { progress: 0, width: viewportWidth, color: props.scaleBackgroundColor }
+  if (!claimScaleBackground(claim, viewportHeight.value)) return
+  scaleBackgroundClaim = claim
   lastScaleProgress = -1
 }
 
-function renderScaleBackground(progress: number) {
-  const el = scaleBackgroundEl
-  if (!el) return
-  const scaleTarget = viewportWidth > 0 ? (viewportWidth - SCALE_BACKGROUND_WIDTH_INSET) / viewportWidth : 1
-  const scale = 1 - (1 - scaleTarget) * progress
-  const topGap = SCALE_BACKGROUND_TOP_GAP * progress
-  el.style.transform = `scale(${scale}) translate3d(0, calc(env(safe-area-inset-top, 0px) * ${progress} + ${topGap.toFixed(2)}px), 0)`
-  // Only once there's a real gap to fill (progress > 0), so a "peek"
-  // position (dim progress still 0) never touches these at all.
-  const engaged = progress > 0.001
-  if (engaged !== isScaleBackgroundEngaged) {
-    isScaleBackgroundEngaged = engaged
-    el.style.clipPath = engaged ? scaleBackgroundClip : (savedScaleBackgroundStyle?.clipPath ?? '')
-    document.body.style.background = engaged ? props.scaleBackgroundColor : (savedBodyBackground ?? '')
-  }
+function restoreScaleBackground() {
+  if (!isClient || !scaleBackgroundClaim) return
+  releaseScaleBackground(scaleBackgroundClaim)
+  scaleBackgroundClaim = null
 }
 
-function restoreScaleBackground() {
-  if (!isClient || !isScaleBackgroundApplied || !scaleBackgroundEl) return
-  const el = scaleBackgroundEl
-  const saved = savedScaleBackgroundStyle
-  isScaleBackgroundApplied = false
-  scaleBackgroundEl = null
-  savedScaleBackgroundStyle = null
-  if (saved) {
-    el.style.transform = saved.transform
-    el.style.clipPath = saved.clipPath
-    el.style.transformOrigin = saved.transformOrigin
-    el.style.willChange = saved.willChange
-  }
-  document.body.style.background = savedBodyBackground ?? ''
-  savedBodyBackground = null
-  isScaleBackgroundEngaged = false
-}
+watch(
+  () => props.scaleBackgroundColor,
+  (color) => {
+    if (!scaleBackgroundClaim) return
+    scaleBackgroundClaim.color = color
+    renderScaleBackground()
+  },
+)
 
 /**
  * A lagged copy of minTranslate: tracks it normally, except it withholds a
@@ -723,7 +935,7 @@ function computeDimProgress(): number {
   if (props.fadeFromIndex === undefined) return computeOpenProgress()
   const snaps = snapTranslates.value
   if (snaps.length === 0) return computeOpenProgress()
-  const idx = Math.min(Math.max(props.fadeFromIndex, 0), snaps.length - 1)
+  const idx = toIndex(props.fadeFromIndex, snaps.length)
   const upper = snaps[idx] // fadeFromIndex's own translateY — progress reaches 1 here (and anything more open)
   const lower = idx > 0 ? snaps[idx - 1] : closedTranslate.value // the point just before it (or fully closed) — progress is 0 here (and anything less open)
   const range = lower - upper || 1
@@ -875,8 +1087,63 @@ function revealFocusedInContent() {
  *  Open / close
  * ════════════════════════════════════════════════════════════════════ */
 
-const stackEntry = {}
 let previouslyFocused: HTMLElement | null = null
+
+/** Set at each open from the sheets already on screen (see stackZIndexFloor); -Infinity leaves the zIndex prop alone. */
+const zIndexFloor = ref(-Infinity)
+/** The backdrop's z-index; the panel sits one above it. */
+const baseZIndex = computed(() => Math.max(props.zIndex, zIndexFloor.value))
+
+const stackEntry: SheetEntry = {
+  panelZIndex: () => (isInDom.value ? baseZIndex.value + 1 : null),
+  ownBackdropOpacity: null,
+  applyBackdropOpacity(opacity) {
+    const backdrop = backdropRef.value
+    if (!backdrop || opacity === lastBackdropOpacity) return
+    lastBackdropOpacity = opacity
+    backdrop.style.opacity = String(opacity)
+  },
+  get restoreTarget() {
+    return previouslyFocused
+  },
+  set restoreTarget(el) {
+    previouslyFocused = el
+  },
+}
+
+/**
+ * About to leave the DOM: a sheet opened from inside this one would hand
+ * focus back to an element that's about to be gone (the outer sheet closed
+ * programmatically while the inner one stays up, say). It gets this sheet's
+ * own restore target instead — what the chain was opened from.
+ */
+function handOffRestoreTargets() {
+  const panel = sheetRef.value
+  if (!panel) return
+  for (const sheet of mountedSheets) {
+    if (sheet !== stackEntry && sheet.restoreTarget && panel.contains(sheet.restoreTarget)) {
+      sheet.restoreTarget = previouslyFocused
+    }
+  }
+}
+
+/**
+ * A sheet nested in another's slot closes along with it, like a native
+ * presented sheet dismissed with the one presenting it. Left open, it would
+ * vanish without an animation when the outer panel's content unmounts — and
+ * its v-model would still say "open", so it popped right back up the next
+ * time the outer sheet opened.
+ */
+const parentSheetOpen = inject(PARENT_SHEET_OPEN, null)
+if (parentSheetOpen) {
+  watch(parentSheetOpen, (parentOpen) => {
+    if (!parentOpen && isOpen.value) close()
+  })
+}
+provide(
+  PARENT_SHEET_OPEN,
+  computed(() => isOpen.value),
+)
 /** True from the start of openSheet() until its spring actually kicks off — syncToSnapPoints stays out of the way until the spring reads the final geometry itself. */
 let isOpeningPending = false
 /** Bumped by anything that invalidates an open sequence still waiting on its nextTick. */
@@ -885,6 +1152,9 @@ let openToken = 0
 let isOpenedPending = false
 let lastVelocity = 0 // px/ms; needed so the closing animation carries over the flick's velocity
 let viewportListenersAttached = false
+/** An index snapToIndex() was given while the sheet couldn't move yet (closed, or opening) — the open sequence goes there instead of defaultSnapPoint. */
+let pendingSnapIndex: number | null = null
+let isUnmounted = false
 
 function attachOpenListeners() {
   if (viewportListenersAttached) return
@@ -923,6 +1193,9 @@ function openSheet() {
   const wasAlreadyInDom = isInDom.value
 
   if (!openSheetStack.includes(stackEntry)) openSheetStack.push(stackEntry)
+  // Also when reopened during its own close animation: something may have
+  // opened above it since.
+  zIndexFloor.value = stackZIndexFloor(stackEntry)
   attachOpenListeners()
   isOpenedPending = true
 
@@ -947,7 +1220,9 @@ function openSheet() {
   const token = ++openToken
   nextTick(() => {
     if (token !== openToken) return
-    currentSnapIndex.value = clampedDefaultIndex.value
+    currentSnapIndex.value =
+      pendingSnapIndex === null ? clampedDefaultIndex.value : toIndex(pendingSnapIndex, snapTranslates.value.length)
+    pendingSnapIndex = null
     // Measure BEFORE reading snapTranslates below — otherwise, the very
     // first time, 'content' would resolve against fitContentHeight.value's
     // default (0), i.e. the closed position.
@@ -975,23 +1250,48 @@ function finishOpen() {
   focusOnOpen()
 }
 
+/**
+ * Whether focus is still where a closing sheet left it: in the panel, on the
+ * keyboard stand-in, or dropped to <body> (what `inert` does to focus inside
+ * the panel). Anything else means focus has been moved on purpose since —
+ * the parent focusing a field right after closing, or a tap on the page
+ * during the close animation — and handing it back would steal it.
+ */
+function isFocusLeftBehind(): boolean {
+  const active = document.activeElement
+  return !active || active === document.body || active === keyboardProxy || !!sheetRef.value?.contains(active)
+}
+
+function restoreFocus() {
+  const target = previouslyFocused
+  previouslyFocused = null
+  if (!target?.isConnected) return
+  // focusin fires synchronously inside focus(), so the flag covers it
+  restoringFocus = true
+  try {
+    target.focus?.({ preventScroll: true })
+  } finally {
+    restoringFocus = false
+  }
+}
+
 function finishClose() {
+  // Both before isInDom goes false and the panel stops containing anything.
+  handOffRestoreTargets()
+  const shouldRestoreFocus = isFocusLeftBehind()
   isInDom.value = false
+  // The sheets underneath take back the dimming this one's backdrop held.
+  renderBackdrops()
   unlockScroll()
   restoreThemeColor()
   restoreScaleBackground()
   teardownContentResizeObserver()
   detachOpenListeners()
   releaseKeyboardProxy()
-  emit('closed')
   revealTarget = null
-  // focusin fires synchronously inside focus(), so the flag covers it
-  restoringFocus = true
-  try {
-    previouslyFocused?.focus?.({ preventScroll: true })
-  } finally {
-    restoringFocus = false
-  }
+  if (shouldRestoreFocus) restoreFocus()
+  else previouslyFocused = null
+  emit('closed')
 }
 
 /** Internal version: used when closing from a gesture, to pass the flick's velocity into the animation. */
@@ -1002,7 +1302,7 @@ function closeWithVelocity(velocity: number) {
   // flow). The sheet is still open then, and mustn't stay wherever the
   // gesture left it.
   nextTick(() => {
-    if (!isOpen.value || isDragging) return
+    if (isUnmounted || !isOpen.value || isDragging) return
     lastVelocity = 0
     settleOn(currentSnapIndex.value, velocity)
   })
@@ -1022,10 +1322,20 @@ function requestClose() {
   if (props.dismissible) close()
 }
 
+/**
+ * Reopened during its own close animation, the sheet still has whatever
+ * opened it the first time to hand focus back to — while what has focus now
+ * is only <body> or the panel itself (left there by `inert`).
+ */
+function rememberFocus() {
+  if (isInDom.value && previouslyFocused && isFocusLeftBehind()) return
+  previouslyFocused = document.activeElement as HTMLElement | null
+}
+
 watch(isOpen, (open) => {
   if (!isClient) return
   if (open) {
-    previouslyFocused = document.activeElement as HTMLElement
+    rememberFocus()
     openSheet()
     return
   }
@@ -1054,9 +1364,17 @@ function settleOn(index: number, velocity: number) {
 }
 
 function snapToIndex(index: number) {
-  const clamped = Math.min(Math.max(index, 0), resolvedSnapPoints.value.length - 1)
+  if (!Number.isFinite(index)) return
+  const clamped = toIndex(index, resolvedSnapPoints.value.length)
+  // Called right alongside opening (`open = true; sheet.snapToIndex(2)`),
+  // the open sequence hasn't picked its target yet and would otherwise
+  // overwrite this one with defaultSnapPoint.
+  if (!isOpen.value || isOpeningPending) {
+    pendingSnapIndex = clamped
+    return
+  }
   currentSnapIndex.value = clamped
-  if (isOpen.value && !isDragging && !isOpeningPending) settleOn(clamped, 0)
+  if (!isDragging) settleOn(clamped, 0)
 }
 
 defineExpose<BottomSheetExposed>({ close, snapToIndex })
@@ -1086,6 +1404,8 @@ type DragPhase = 'idle' | 'pending' | 'dragging'
 let dragPhase: DragPhase = 'idle'
 /** Touch.identifier or PointerEvent.pointerId, depending on which path started the gesture. */
 let activeInputId: number | null = null
+/** Which path activeInputId belongs to — touch identifiers and pointer ids are separate number spaces. */
+let activeIsTouch = false
 let startX = 0
 let startY = 0
 let startTranslate = 0
@@ -1136,9 +1456,22 @@ function getVelocity(releaseTime: number): number {
   if (releaseTime - last.t > VELOCITY_STALE_AFTER) return 0
   // Only the final stretch of movement counts: for a drag down that ends in
   // a flick up, averaging across the reversal would say "barely moving."
-  let firstIndex = samples.length - 2
-  const direction = Math.sign(last.y - samples[firstIndex].y)
-  while (firstIndex > 0 && Math.sign(samples[firstIndex].y - samples[firstIndex - 1].y) === direction) firstIndex--
+  // Events with no vertical movement (a mouse jittering sideways, a touch
+  // that only moved in x) don't break the stretch — they used to: a final
+  // sideways-only pointermove read as direction 0, and the flick as zero.
+  let firstIndex = samples.length - 1
+  let direction = 0
+  while (firstIndex > 0) {
+    const step = Math.sign(samples[firstIndex].y - samples[firstIndex - 1].y)
+    if (step !== 0) {
+      if (direction === 0) direction = step
+      else if (step !== direction) break
+    }
+    firstIndex--
+  }
+  if (direction === 0) return 0
+  // Standing still before the movement started isn't part of it.
+  while (firstIndex < samples.length - 1 && samples[firstIndex + 1].y === samples[firstIndex].y) firstIndex++
   const first = samples[firstIndex]
   const dt = last.t - first.t
   if (dt <= 0) return 0
@@ -1168,6 +1501,7 @@ function beginGesture(target: EventTarget | null, inputId: number, x: number, y:
   const el = target as HTMLElement | null
   startX = x
   startY = y
+  activeIsTouch = isTouch
   if (el?.closest?.('.vbs-grabber-row')) {
     activeInputId = inputId
     beginDrag(y, t)
@@ -1294,7 +1628,19 @@ function findActiveTouch(list: TouchList): Touch | null {
 }
 
 function onTouchStart(e: TouchEvent) {
-  if (dragPhase !== 'idle') return
+  if (dragPhase !== 'idle') {
+    // A second finger, or a touch while the mouse holds a gesture. (A
+    // tracked id among the touches that just STARTED is a reused identifier,
+    // not the same finger still down.)
+    const stillDown = !!findActiveTouch(e.touches) && !findActiveTouch(e.changedTouches)
+    if (!activeIsTouch || stillDown) return
+    // The tracked finger is gone, yet its touchend never arrived: when the
+    // element under it is removed from the DOM (slot content re-rendering
+    // mid-gesture), the rest of that touch is dispatched to the detached
+    // node and never bubbles up here. Left alone, the gesture would stay
+    // "in progress" and every later touch would be ignored for good.
+    gestureEnd(e.timeStamp)
+  }
   const touch = e.changedTouches[0]
   // Apple Pencil arrives through the pointer path too; don't handle it twice.
   if (!touch || (touch as Touch & { touchType?: string }).touchType === 'stylus') return
@@ -1339,6 +1685,13 @@ function onPanelPointerDown(e: PointerEvent) {
 
 function onPointerMove(e: PointerEvent) {
   if (e.pointerId !== activeInputId) return
+  // The button was released where no pointerup reached the window (outside
+  // the browser window, over an iframe, during a context menu): the first
+  // move after that has no buttons pressed, and ends the gesture instead.
+  if (e.buttons === 0) {
+    onPointerUp(e)
+    return
+  }
   const wasPending = dragPhase === 'pending'
   gestureMove(e.clientX, e.clientY, e.timeStamp)
   if (dragPhase === 'idle') detachMouseListeners()
@@ -1436,24 +1789,51 @@ function onDocumentKeydown(e: KeyboardEvent) {
   }
 }
 
-const FOCUSABLE_SELECTOR =
-  'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), summary, [contenteditable="true"], [tabindex]:not([tabindex="-1"])'
+/**
+ * What Tab can reach. A negative tabindex is excluded from every entry, not
+ * only from the `[tabindex]` one: a `<button tabindex="-1">` that ended up as
+ * the list's last element meant Tab from the real last stop wasn't caught,
+ * and focus walked out of the dialog into the page behind it.
+ */
+const FOCUSABLE_SELECTOR = [
+  'a[href]',
+  'button:not([disabled])',
+  'textarea:not([disabled])',
+  'input:not([disabled]):not([type="hidden"])',
+  'select:not([disabled])',
+  'summary',
+  'iframe',
+  'audio[controls]',
+  'video[controls]',
+  '[contenteditable]:not([contenteditable="false"])',
+  '[tabindex]',
+]
+  .map((s) => `${s}:not([tabindex^="-"])`)
+  .join(', ')
+
+/** Rendered at all: `offsetParent` alone misses a `position: fixed` element, which never has one. */
+function isRendered(el: HTMLElement): boolean {
+  if (el.offsetParent !== null) return true
+  return getComputedStyle(el).position === 'fixed' && el.getClientRects().length > 0
+}
 
 function getFocusableElements(): HTMLElement[] {
   if (!sheetRef.value) return []
-  return Array.from(sheetRef.value.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)).filter(
-    (el) => el.offsetParent !== null,
-  )
+  return Array.from(sheetRef.value.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)).filter(isRendered)
 }
 
 const INPUT_LIKE_SELECTOR =
-  'input:not([disabled]):not([type="hidden"]), textarea:not([disabled]), select:not([disabled]), [contenteditable="true"]'
+  'input:not([disabled]):not([type="hidden"]), textarea:not([disabled]), select:not([disabled]), [contenteditable]:not([contenteditable="false"])'
 
 /** For `autoFocus="input"` — the first visible, enabled input-like element in the panel, in DOM order. */
 function getFirstInputElement(): HTMLElement | null {
   if (!sheetRef.value) return null
-  const el = sheetRef.value.querySelector<HTMLElement>(INPUT_LIKE_SELECTOR)
-  return el && el.offsetParent !== null ? el : null
+  // The first VISIBLE one: a hidden field ahead of it in the DOM (a
+  // collapsed section, a `v-show`n step of a form) used to mean none at all.
+  for (const el of sheetRef.value.querySelectorAll<HTMLElement>(INPUT_LIKE_SELECTOR)) {
+    if (isRendered(el)) return el
+  }
+  return null
 }
 
 /**
@@ -1513,6 +1893,17 @@ function trapTab(e: KeyboardEvent) {
   if (active === sheet || !active || !sheet.contains(active)) {
     e.preventDefault()
     ;(e.shiftKey ? last : first).focus()
+  } else if (!focusable.includes(active)) {
+    // Focus sits on something Tab itself can't reach (a `tabindex="-1"`
+    // element focused from code, a scroller the browser made focusable):
+    // the browser would move on from there in DOM order, and past the last
+    // stop that's out of the dialog. Do the same move here, wrapping.
+    e.preventDefault()
+    const after = (el: HTMLElement) => !!(active.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING)
+    const next = e.shiftKey
+      ? [...focusable].reverse().find((el) => !after(el))
+      : focusable.find(after)
+    ;(next ?? (e.shiftKey ? last : first)).focus()
   } else if (e.shiftKey && active === first) {
     e.preventDefault()
     last.focus()
@@ -1548,12 +1939,12 @@ function onPanelScroll() {
   if (sheetRef.value) sheetRef.value.scrollTop = 0
 }
 
-const backdropStyle = computed(() => ({ zIndex: props.zIndex }))
+const backdropStyle = computed(() => ({ zIndex: baseZIndex.value }))
 
 /** A px height (only ever written when the viewport itself changes, never during motion) instead of `100dvh`: dvh ignores the on-screen keyboard, and everything else here — snap points, the footer's position — is measured against what's actually visible. */
 const sheetStyle = computed(() => ({
   height: `${viewportHeight.value}px`,
-  zIndex: props.zIndex + 1,
+  zIndex: baseZIndex.value + 1,
 }))
 
 // Vue doesn't own `transform`/`opacity` (see renderFrame), so an element
@@ -1566,16 +1957,27 @@ watch([sheetRef, backdropRef, footerRef], renderFrame, { flush: 'post' })
 // not guarded by the lifecycle (watch(isOpen), updateViewportHeight, etc.).
 onMounted(() => {
   isMounted.value = true
+  mountedSheets.add(stackEntry)
   updateViewportHeight()
   reducedMotionQuery = window.matchMedia('(prefers-reduced-motion: reduce)')
 
   if (isOpen.value) {
-    previouslyFocused = document.activeElement as HTMLElement
+    rememberFocus()
     openSheet()
   }
 })
 
 onBeforeUnmount(() => {
+  // The outer sheet closed without an animation (reduced motion), and its
+  // content is unmounting before the watcher above got to run.
+  if (parentSheetOpen && !parentSheetOpen.value && isOpen.value) isOpen.value = false
+  isUnmounted = true
+  // Unmounted while open (a route change, a v-if around the sheet): focus
+  // would otherwise sink to <body> along with the removed panel.
+  const shouldRestoreFocus = isInDom.value && isFocusLeftBehind()
+  if (isInDom.value) handOffRestoreTargets()
+  mountedSheets.delete(stackEntry)
+  renderBackdrops()
   openToken++
   cancelSpringAnimation()
   abortGesture()
@@ -1590,6 +1992,9 @@ onBeforeUnmount(() => {
   unlockScroll()
   restoreThemeColor()
   restoreScaleBackground()
+  if (shouldRestoreFocus) restoreFocus()
+  previouslyFocused = null
+  revealTarget = null
 })
 </script>
 
